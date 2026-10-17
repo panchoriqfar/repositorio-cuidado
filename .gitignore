@@ -1,0 +1,42 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+.env_local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Base de datos local SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Variables de entorno (credenciales sensibles)
+.env
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Twilio / secretos
+*.pem
+*.key

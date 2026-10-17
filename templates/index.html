@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Turnos de Cuidadores y Actividades Médicas</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
+
+    <!-- BARRA DE NAVEGACIÓN SUPERIOR -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+                    <i class="fa-solid fa-heart-pulse text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-900 leading-tight">MedTurnos Pro</h1>
+                    <p class="text-xs text-slate-500">Turnos de Cuidadores y Actividades Médicas</p>
+                </div>
+            </div>
+
+            <!-- Acciones de Cabecera -->
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <!-- Modo Admin Badge & Botones -->
+                <div id="adminBadge" class="hidden items-center space-x-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-full text-xs font-semibold">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span id="adminUsername">Admin</span>
+                </div>
+
+                <div id="adminQuickActions" class="hidden items-center space-x-1.5 sm:space-x-2">
+                    <button onclick="openCuidadoresModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1.5" title="Gestionar Cuidadores">
+                        <i class="fa-solid fa-hands-holding-child text-brand-600"></i>
+                        <span class="hidden sm:inline">Cuidadores</span>
+                    </button>
+                    <button onclick="openMedicosModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1.5" title="Gestionar Personal Médico">
+                        <i class="fa-solid fa-user-doctor text-teal-600"></i>
+                        <span class="hidden sm:inline">Personal Médico</span>
+                    </button>
+                    <button onclick="openNotificacionModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5">
+                        <i class="fa-brands fa-whatsapp text-sm"></i>
+                        <span class="hidden sm:inline">WhatsApp Hoy</span>
+                    </button>
+                    <button onclick="logoutAdmin()" class="px-2 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Cerrar Sesión">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                    </button>
+                </div>
+
+                <!-- Botón Iniciar Sesión (Vista pública) -->
+                <button id="loginBtn" onclick="openLoginModal()" class="inline-flex items-center space-x-2 bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-all">
+                    <i class="fa-solid fa-lock text-xs"></i>
+                    <span>Iniciar Sesión</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- BARRA DE CONTROL DE FECHA SEMANAL -->
+        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <button onclick="navegarSemana(-7)" title="Semana Anterior" class="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <button onclick="irSemanaActual()" class="px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors">
+                    Esta Semana
+                </button>
+                <button onclick="navegarSemana(7)" title="Semana Siguiente" class="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+
+                <div class="pl-2">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold block">Cuadrante de Cuidadores</span>
+                    <span id="rangoSemanaTexto" class="text-base sm:text-lg font-bold text-slate-900">Cargando fechas...</span>
+                </div>
+            </div>
+
+            <!-- Filtro de fecha y botón admin de asignación -->
+            <div class="flex items-center space-x-2 w-full md:w-auto justify-end">
+                <input type="date" id="datePicker" onchange="seleccionarFecha(this.value)" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-slate-50">
+                
+                <button id="btnNuevaAsignacion" onclick="openAsignacionModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Asignar Turno Cuidador</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- TABLA DEL CUADRANTE SEMANAL (AM, PM1, PM2, NOCTURNO) -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-left text-sm" id="tablaCuadrante">
+                    <thead>
+                        <tr class="bg-slate-100/80 border-b border-slate-200 text-slate-700">
+                            <th class="p-4 font-semibold text-xs tracking-wider uppercase text-slate-500 w-44 min-w-[170px]">
+                                Bloque Horario
+                            </th>
+                            <th id="th-dia-0" class="p-4 font-semibold text-center min-w-[140px]">Lunes</th>
+                            <th id="th-dia-1" class="p-4 font-semibold text-center min-w-[140px]">Martes</th>
+                            <th id="th-dia-2" class="p-4 font-semibold text-center min-w-[140px]">Miércoles</th>
+                            <th id="th-dia-3" class="p-4 font-semibold text-center min-w-[140px]">Jueves</th>
+                            <th id="th-dia-4" class="p-4 font-semibold text-center min-w-[140px]">Viernes</th>
+                            <th id="th-dia-5" class="p-4 font-semibold text-center min-w-[140px]">Sábado</th>
+                            <th id="th-dia-6" class="p-4 font-semibold text-center min-w-[140px]">Domingo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuadranteBody" class="divide-y divide-slate-100">
+                        <tr>
+                            <td colspan="8" class="p-12 text-center text-slate-400">
+                                <i class="fa-solid fa-circle-notch fa-spin text-2xl text-brand-600 mb-2"></i>
+                                <p>Cargando cuadrante semanal...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECCIÓN INFERIOR: ACTIVIDADES MÉDICAS Y VISITAS DEL DÍA -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 text-teal-600 flex items-center justify-center">
+                        <i class="fa-solid fa-stethoscope"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">Actividades y Visitas Médicas de la Semana</h2>
+                        <p class="text-xs text-slate-500">Curaciones, visitas domiciliarias y procedimientos (asignados o no a personal médico)</p>
+                    </div>
+                </div>
+
+                <button id="btnNuevaActividad" onclick="openActividadModal()" class="hidden px-3.5 py-1.5 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Nueva Actividad Médica</span>
+                </button>
+            </div>
+
+            <div id="contenedorActividades" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="col-span-full text-center py-8 text-slate-400">
+                    <p class="text-sm">Cargando actividades...</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
+        <p>&copy; 2026 MedTurnos Pro &bull; Gestión de Cuidadores y Personal Médico</p>
+    </footer>
+
+    <!-- ==================== MODALES ==================== -->
+
+    <!-- 1. MODAL LOGIN -->
+    <div id="loginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scaleUp">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center">
+                        <i class="fa-solid fa-user-shield"></i>
+                    </div>
+                    <h3 class="font-bold text-slate-900 text-lg">Acceso Administrativo</h3>
+                </div>
+                <button onclick="closeLoginModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Usuario</label>
+                    <input type="text" id="loginUsername" required placeholder="admin" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Contraseña</label>
+                    <input type="password" id="loginPassword" required placeholder="••••••••" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                </div>
+                <div id="loginError" class="hidden text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-100"></div>
+                <button type="submit" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm rounded-xl shadow-md transition-all">
+                    Ingresar al Panel
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. MODAL ASIGNAR TURNO A CUIDADOR (CON SELECCIÓN DE HORAS 00:00 A 23:59) -->
+    <div id="asignacionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-brand-700">
+                    <i class="fa-solid fa-clock text-lg"></i>
+                    <h3 class="font-bold text-slate-900 text-lg">Asignar Turno de Cuidador/a</h3>
+                </div>
+                <button onclick="closeAsignacionModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-[11px] text-blue-800 flex items-center gap-2">
+                <i class="fa-solid fa-circle-info text-blue-600"></i>
+                <span>Los turnos son asignados <strong>únicamente a cuidadores</strong> asignando las horas exactas de inicio y fin (00:00 - 23:59).</span>
+            </div>
+
+            <form id="asignacionForm" onsubmit="handleGuardarAsignacion(event)" class="space-y-3.5">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha del Turno</label>
+                    <input type="date" id="asigFecha" required class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Cuidador/a Principal</label>
+                    <select id="asigCuidador" required class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                        <!-- Solo lista cuidadores -->
+                    </select>
+                </div>
+
+                <!-- CUIDADORES ADICIONALES (OPCIONAL) -->
+                <div class="space-y-2">
+                    <label class="block text-xs font-semibold text-slate-700 mb-0.5 flex items-center justify-between">
+                        <span>Cuidadores Adicionales <span class="text-slate-400 font-normal">(Opcional)</span></span>
+                    </label>
+                    <div id="cuidadoresAdicionalesLista" class="space-y-2">
+                        <!-- Dinámico: agregados con el botón -->
+                    </div>
+                    <button type="button" onclick="agregarCampoCuidadorAdicional()" class="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl hover:bg-brand-50 border border-dashed border-brand-300 transition-colors w-full bg-slate-50/60">
+                        <i class="fa-solid fa-user-plus text-xs"></i>
+                        <span>+ Agregar más de un/a cuidador/a (opcional)</span>
+                    </button>
+                </div>
+
+                <!-- SELECCIÓN DE HORARIO DE 00:00 A 23:59 -->
+                <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">
+                            <i class="fa-regular fa-clock text-brand-600 mr-1"></i>Hora Inicio
+                        </label>
+                        <input type="time" id="asigHoraInicio" required value="10:00" min="00:00" max="23:59" onchange="autoSugerirBloque()" oninput="autoSugerirBloque()" class="w-full px-3 py-2 text-sm font-semibold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">
+                            <i class="fa-regular fa-clock text-brand-600 mr-1"></i>Hora Fin
+                        </label>
+                        <input type="time" id="asigHoraFin" required value="14:30" min="00:00" max="23:59" class="w-full px-3 py-2 text-sm font-semibold border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                    </div>
+                    <div class="col-span-2 pt-1 text-[11px] text-slate-500">
+                        Rango de 00:00 a 23:59 hrs. Se clasifica automáticamente en el bloque según el horario.
+                    </div>
+                </div>
+
+                <!-- UBICACIÓN EN EL CALENDARIO (AM, PM1, PM2, NOCTURNO) -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Bloque Horario</label>
+                    <select id="asigBloque" required onchange="alCambiarBloque()" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                        <!-- AM, PM1, PM2, Nocturno -->
+                    </select>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end space-x-2">
+                    <button type="button" onclick="closeAsignacionModal()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm">Guardar Turno</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. MODAL ACTIVIDAD MÉDICA (PERSONAL MÉDICO ASIGNABLE Opcional) -->
+    <div id="actividadModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-teal-700">
+                    <i class="fa-solid fa-notes-medical text-lg"></i>
+                    <h3 class="font-bold text-slate-900 text-lg" id="actividadModalTitle">Programar Actividad Médica</h3>
+                </div>
+                <button onclick="closeActividadModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <form id="actividadForm" onsubmit="handleGuardarActividad(event)" class="space-y-3">
+                <input type="hidden" id="actId">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha</label>
+                        <input type="date" id="actFecha" required class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Hora</label>
+                        <input type="time" id="actHora" required min="00:00" max="23:59" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Título de la Actividad</label>
+                    <input type="text" id="actTitulo" required placeholder="Ej: Curación de herida / Visita domiciliaria" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Descripción / Indicaciones</label>
+                    <textarea id="actDescripcion" rows="3" placeholder="Detalles clínicos o indicaciones especiales..." class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">
+                        Personal Médico Asignado <span class="text-slate-400 font-normal">(Opcional)</span>
+                    </label>
+                    <select id="actMedico" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none bg-white">
+                        <option value="">-- Sin personal médico específico --</option>
+                    </select>
+                </div>
+                <div class="pt-2 flex items-center justify-end space-x-2">
+                    <button type="button" onclick="closeActividadModal()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm">Guardar Actividad</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 4. MODAL GESTIÓN DE CUIDADORES -->
+    <div id="cuidadoresModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-brand-700">
+                    <i class="fa-solid fa-hands-holding-child text-xl"></i>
+                    <h3 class="font-bold text-slate-900 text-lg">Gestión de Cuidadores</h3>
+                </div>
+                <button onclick="closeCuidadoresModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <!-- Formulario para agregar cuidador -->
+            <form id="nuevoCuidadorForm" onsubmit="handleCrearCuidador(event)" class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Registrar Nuevo/a Cuidador/a</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input type="text" id="cuidNombre" required placeholder="Nombre" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <input type="text" id="cuidApellido" required placeholder="Apellido" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <input type="text" id="cuidTelefono" required placeholder="WhatsApp (+56912345678)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <input type="text" id="cuidRol" required placeholder="Rol (Ej: Cuidador Diurno, TENS)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                </div>
+                <div class="text-right">
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-lg shadow-sm">
+                        + Registrar Cuidador
+                    </button>
+                </div>
+            </form>
+
+            <!-- Lista de Cuidadores -->
+            <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="listaCuidadores">
+                <!-- Dinámico -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. MODAL GESTIÓN DE PERSONAL MÉDICO -->
+    <div id="medicosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-teal-700">
+                    <i class="fa-solid fa-user-doctor text-xl"></i>
+                    <h3 class="font-bold text-slate-900 text-lg">Gestión de Personal Médico</h3>
+                </div>
+                <button onclick="closeMedicosModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <!-- Formulario para agregar médico -->
+            <form id="nuevoMedicoForm" onsubmit="handleCrearMedico(event)" class="bg-teal-50/50 p-4 rounded-xl border border-teal-200 space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-teal-900">Registrar Personal Médico</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input type="text" id="medNombre" required placeholder="Nombre (Ej: Dra. Andrea)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <input type="text" id="medApellido" required placeholder="Apellido (Ej: Silva)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <input type="text" id="medTelefono" required placeholder="WhatsApp (+56912345678)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <input type="text" id="medEspecialidad" required placeholder="Especialidad (Ej: Médico General, Enfermera)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                </div>
+                <div class="text-right">
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-lg shadow-sm">
+                        + Registrar Personal Médico
+                    </button>
+                </div>
+            </form>
+
+            <!-- Lista de Médicos -->
+            <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="listaMedicos">
+                <!-- Dinámico -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. MODAL NOTIFICACIONES POR WHATSAPP -->
+    <div id="notificacionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-emerald-600">
+                    <i class="fa-brands fa-whatsapp text-2xl"></i>
+                    <h3 class="font-bold text-slate-900 text-lg">Envío de Turnos por WhatsApp</h3>
+                </div>
+                <button onclick="closeNotificacionModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <p class="text-xs text-slate-600">
+                Notifica automáticamente a los <strong>cuidadores en turno</strong> con su horario asignado de inicio y fin, y el listado de actividades médicas programadas para la jornada.
+            </p>
+
+            <div class="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <label class="text-xs font-semibold text-slate-700">Fecha objetivo:</label>
+                <input type="date" id="notifFecha" class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                <button onclick="ejecutarEnvioWhatsApp()" id="btnDispararWhatsApp" class="px-4 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5 ml-auto">
+                    <i class="fa-solid fa-paper-plane"></i>
+                    <span>Disparar Envío Ahora</span>
+                </button>
+            </div>
+
+            <!-- Contenedor de Resultados -->
+            <div id="notifResultados" class="hidden space-y-3">
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-100 text-xs font-semibold text-slate-700">
+                    <span>Total asignaciones: <strong id="resTotal">0</strong></span>
+                    <span class="text-emerald-700">Enviados: <strong id="resEnviados">0</strong></span>
+                    <span class="text-rose-700">Errores: <strong id="resErrores">0</strong></span>
+                </div>
+
+                <div class="max-h-60 overflow-y-auto space-y-2 pr-1" id="resDetallesLista">
+                    <!-- Detalle -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT PRINCIPAL -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

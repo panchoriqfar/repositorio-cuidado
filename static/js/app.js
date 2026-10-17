@@ -1,0 +1,957 @@
+/**
+ * MedTurnos Pro - Frontend Logic
+ * Gestión de Turnos de Cuidadores y Actividades Médicas
+ */
+
+let fechaActual = new Date();
+let cuadranteData = null;
+let listaCuidadoresCache = [];
+let listaMedicosCache = [];
+let listaBloquesCache = [];
+
+// Inicialización
+document.addEventListener("DOMContentLoaded", async () => {
+    actualizarInputFechaPicker(fechaActual);
+    await checkAuth();
+    await cargarDatosIniciales();
+    await cargarCuadrante();
+    await cargarActividades();
+});
+
+// --- AUTENTICACIÓN Y SESIÓN ---
+function getToken() {
+    return localStorage.getItem("medturnos_token");
+}
+
+function setToken(token) {
+    localStorage.setItem("medturnos_token", token);
+}
+
+function removeToken() {
+    localStorage.removeItem("medturnos_token");
+}
+
+async function checkAuth() {
+    const token = getToken();
+    const adminBadge = document.getElementById("adminBadge");
+    const adminUsername = document.getElementById("adminUsername");
+    const adminQuickActions = document.getElementById("adminQuickActions");
+    const loginBtn = document.getElementById("loginBtn");
+    const btnNuevaAsignacion = document.getElementById("btnNuevaAsignacion");
+    const btnNuevaActividad = document.getElementById("btnNuevaActividad");
+
+    if (!token) {
+        adminBadge.classList.add("hidden");
+        adminBadge.classList.remove("flex");
+        adminQuickActions.classList.add("hidden");
+        adminQuickActions.classList.remove("flex");
+        btnNuevaAsignacion.classList.add("hidden");
+        btnNuevaAsignacion.classList.remove("inline-flex");
+        btnNuevaActividad.classList.add("hidden");
+        btnNuevaActividad.classList.remove("inline-flex");
+        loginBtn.classList.remove("hidden");
+        return false;
+    }
+
+    try {
+        const res = await fetch("/api/auth/me", {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const user = await res.json();
+            adminUsername.textContent = `${user.username} (${user.rol})`;
+            adminBadge.classList.remove("hidden");
+            adminBadge.classList.add("flex");
+            adminQuickActions.classList.remove("hidden");
+            adminQuickActions.classList.add("flex");
+            btnNuevaAsignacion.classList.remove("hidden");
+            btnNuevaAsignacion.classList.add("inline-flex");
+            btnNuevaActividad.classList.remove("hidden");
+            btnNuevaActividad.classList.add("inline-flex");
+            loginBtn.classList.add("hidden");
+            return true;
+        } else {
+            removeToken();
+            return checkAuth();
+        }
+    } catch (e) {
+        console.error("Error verificando sesión:", e);
+        return false;
+    }
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const user = document.getElementById("loginUsername").value.trim();
+    const pass = document.getElementById("loginPassword").value.trim();
+    const errorDiv = document.getElementById("loginError");
+
+    errorDiv.classList.add("hidden");
+    errorDiv.textContent = "";
+
+    try {
+        const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: user, password: pass })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            setToken(data.access_token);
+            closeLoginModal();
+            await checkAuth();
+            await cargarCuadrante();
+            await cargarActividades();
+        } else {
+            errorDiv.textContent = data.detail || "Credenciales incorrectas";
+            errorDiv.classList.remove("hidden");
+        }
+    } catch (err) {
+        errorDiv.textContent = "Error de conexión";
+        errorDiv.classList.remove("hidden");
+    }
+}
+
+function logoutAdmin() {
+    removeToken();
+    window.location.reload();
+}
+
+
+// --- GESTIÓN DE FECHAS ---
+function formatDateIso(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const d = String(dateObj.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+}
+
+function actualizarInputFechaPicker(dateObj) {
+    const picker = document.getElementById("datePicker");
+    picker.value = formatDateIso(dateObj);
+}
+
+function navegarSemana(diasOffset) {
+    fechaActual.setDate(fechaActual.getDate() + diasOffset);
+    actualizarInputFechaPicker(fechaActual);
+    cargarCuadrante();
+    cargarActividades();
+}
+
+function irSemanaActual() {
+    fechaActual = new Date();
+    actualizarInputFechaPicker(fechaActual);
+    cargarCuadrante();
+    cargarActividades();
+}
+
+function seleccionarFecha(valorStr) {
+    if (valorStr) {
+        const partes = valorStr.split("-");
+        fechaActual = new Date(partes[0], partes[1] - 1, partes[2]);
+        cargarCuadrante();
+        cargarActividades();
+    }
+}
+
+
+// --- CARGAR CUIDADORES, MÉDICOS Y BLOQUES ---
+async function cargarDatosIniciales() {
+    try {
+        const [resC, resM, resB] = await Promise.all([
+            fetch("/api/admin/cuidadores"),
+            fetch("/api/admin/medicos"),
+            fetch("/api/admin/bloques")
+        ]);
+        if (resC.ok) listaCuidadoresCache = await resC.json();
+        if (resM.ok) listaMedicosCache = await resM.json();
+        if (resB.ok) listaBloquesCache = await resB.json();
+        poblarSelectsFormularios();
+    } catch (e) {
+        console.error("Error cargando cuidadores/médicos/bloques:", e);
+    }
+}
+
+function poblarSelectsFormularios() {
+    // 1. Select de CUIDADORES (Solo Cuidadores para Turnos)
+    const selectCuid = document.getElementById("asigCuidador");
+    selectCuid.innerHTML = listaCuidadoresCache
+        .filter(c => c.activo)
+        .map(c => `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido}</option>`)
+        .join("");
+
+    // 2. Select de BLOQUES en cuadrante (AM, PM1, PM2, Nocturno) - Solo nombres de bloque, sin horas
+    const selectBloque = document.getElementById("asigBloque");
+    selectBloque.innerHTML = listaBloquesCache.map(b => 
+        `<option value="${b.id_bloque}">Bloque ${b.nombre_bloque}</option>`
+    ).join("");
+
+    // 3. Select de PERSONAL MÉDICO (Solo Personal Médico para Actividades Médicas)
+    const actMed = document.getElementById("actMedico");
+    actMed.innerHTML = `<option value="">-- Sin médico asignado (Opcional) --</option>` +
+        listaMedicosCache
+            .filter(m => m.activo)
+            .map(m => `<option value="${m.id_medico}">${m.nombre} ${m.apellido} (${m.especialidad})</option>`)
+            .join("");
+}
+
+// Organizar automáticamente según las horas seleccionadas por el usuario
+function autoSugerirBloque() {
+    const horaIni = document.getElementById("asigHoraInicio").value;
+    if (!horaIni) return;
+    const [h, m] = horaIni.split(":").map(Number);
+    const mins = h * 60 + m;
+
+    let codigoSugerido = "AM";
+    if (mins >= 360 && mins < 870) codigoSugerido = "AM";          // 06:00 a 14:29
+    else if (mins >= 870 && mins < 1080) codigoSugerido = "PM1";   // 14:30 a 17:59
+    else if (mins >= 1080 && mins < 1260) codigoSugerido = "PM2";  // 18:00 a 20:59
+    else codigoSugerido = "N";                                     // 21:00 a 05:59
+
+    const bloque = listaBloquesCache.find(b => b.codigo_bloque === codigoSugerido);
+    if (bloque) {
+        document.getElementById("asigBloque").value = bloque.id_bloque;
+    }
+}
+
+// Si el usuario cambia el bloque manualmente, sugerir horario base del bloque
+function alCambiarBloque() {
+    const idBloque = parseInt(document.getElementById("asigBloque").value);
+    const bloque = listaBloquesCache.find(b => b.id_bloque === idBloque);
+    if (!bloque) return;
+
+    const inicioInput = document.getElementById("asigHoraInicio");
+    const finInput = document.getElementById("asigHoraFin");
+
+    if (bloque.codigo_bloque === "AM") {
+        inicioInput.value = "10:00";
+        finInput.value = "14:30";
+    } else if (bloque.codigo_bloque === "PM1") {
+        inicioInput.value = "14:30";
+        finInput.value = "18:00";
+    } else if (bloque.codigo_bloque === "PM2") {
+        inicioInput.value = "18:00";
+        finInput.value = "21:00";
+    } else if (bloque.codigo_bloque === "N") {
+        inicioInput.value = "21:00";
+        finInput.value = "10:00";
+    }
+}
+
+// Gestión de cuidadores adicionales en la asignación de turnos (opcional)
+function limpiarCuidadoresAdicionales() {
+    const cont = document.getElementById("cuidadoresAdicionalesLista");
+    if (cont) cont.innerHTML = "";
+}
+
+function agregarCampoCuidadorAdicional(idPreseleccionado = null) {
+    const cont = document.getElementById("cuidadoresAdicionalesLista");
+    if (!cont) return;
+
+    const div = document.createElement("div");
+    div.className = "flex items-center gap-2 animate-fadeIn";
+
+    const optionsHtml = listaCuidadoresCache
+        .filter(c => c.activo)
+        .map(c => `<option value="${c.id_cuidador}" ${idPreseleccionado === c.id_cuidador ? 'selected' : ''}>${c.nombre} ${c.apellido}</option>`)
+        .join("");
+
+    div.innerHTML = `
+        <div class="flex-1">
+            <select class="cuidador-adicional-select w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white">
+                <option value="">-- Seleccionar Cuidador/a Adicional --</option>
+                ${optionsHtml}
+            </select>
+        </div>
+        <button type="button" onclick="this.closest('.flex').remove()" title="Quitar cuidador adicional" class="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors">
+            <i class="fa-solid fa-trash-can text-sm"></i>
+        </button>
+    `;
+
+    cont.appendChild(div);
+}
+
+
+// --- CARGAR CUADRANTE SEMANAL ---
+async function cargarCuadrante() {
+    const fechaIso = formatDateIso(fechaActual);
+    const tbody = document.getElementById("cuadranteBody");
+    const esAdmin = !!getToken();
+
+    try {
+        const res = await fetch(`/api/public/cuadrante?fecha_base=${fechaIso}`);
+        if (!res.ok) throw new Error("Error obteniendo datos del cuadrante");
+        cuadranteData = await res.json();
+
+        // 1. Rango de texto de la semana
+        const ini = new Date(cuadranteData.inicio_semana + "T00:00:00");
+        const fin = new Date(cuadranteData.fin_semana + "T00:00:00");
+        const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        document.getElementById("rangoSemanaTexto").textContent = 
+            `${ini.getDate()} ${meses[ini.getMonth()]} - ${fin.getDate()} ${meses[fin.getMonth()]} ${fin.getFullYear()}`;
+
+        // 2. Encabezados de días
+        cuadranteData.dias.forEach((dia, idx) => {
+            const th = document.getElementById(`th-dia-${idx}`);
+            const dObj = new Date(dia.fecha + "T00:00:00");
+            const esHoyClass = dia.es_hoy ? "bg-brand-50 border-brand-200 text-brand-900 ring-2 ring-brand-400" : "";
+            
+            th.className = `p-3.5 text-center min-w-[150px] transition-all ${esHoyClass}`;
+            th.innerHTML = `
+                <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">${dia.nombre}</div>
+                <div class="text-sm font-bold text-slate-800">${dObj.getDate()} ${meses[dObj.getMonth()]}</div>
+                ${dia.es_hoy ? '<span class="inline-block mt-1 px-2 py-0.5 text-[10px] bg-brand-600 text-white font-bold rounded-full">HOY</span>' : ''}
+            `;
+        });
+
+        // 3. Renderizar Filas de Bloques (AM, PM1, PM2, Nocturno)
+        tbody.innerHTML = "";
+        cuadranteData.bloques.forEach(bloque => {
+            const tr = document.createElement("tr");
+            tr.className = "hover:bg-slate-50/70 transition-colors border-b border-slate-100";
+
+            let bloqueBadgeColor = "bg-blue-50 text-blue-700 border-blue-200";
+            if (bloque.codigo_bloque === "AM") bloqueBadgeColor = "bg-amber-50 text-amber-700 border-amber-200";
+            else if (bloque.codigo_bloque === "PM1") bloqueBadgeColor = "bg-sky-50 text-sky-700 border-sky-200";
+            else if (bloque.codigo_bloque === "PM2") bloqueBadgeColor = "bg-indigo-50 text-indigo-700 border-indigo-200";
+            else if (bloque.codigo_bloque === "N") bloqueBadgeColor = "bg-purple-50 text-purple-700 border-purple-200";
+
+            const tdBloque = document.createElement("td");
+            tdBloque.className = "p-4 align-middle bg-slate-50/50 border-r border-slate-100 text-center sm:text-left";
+            tdBloque.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <span class="px-2.5 py-1 text-xs font-bold border rounded-lg uppercase tracking-wide ${bloqueBadgeColor}">${bloque.nombre_bloque}</span>
+                </div>
+            `;
+            tr.appendChild(tdBloque);
+
+            // 7 Días
+            cuadranteData.dias.forEach(dia => {
+                const td = document.createElement("td");
+                td.className = `p-2.5 align-top border-r border-slate-100 min-w-[150px] ${dia.es_hoy ? 'bg-brand-50/20' : ''}`;
+
+                let asigs = cuadranteData.matriz[bloque.id_bloque] && cuadranteData.matriz[bloque.id_bloque][dia.fecha];
+                if (asigs && !Array.isArray(asigs)) {
+                    asigs = [asigs];
+                }
+
+                if (asigs && asigs.length > 0) {
+                    // Obtener horarios únicos asignados en este bloque
+                    const horariosUnicos = [...new Set(asigs.map(a => a.horario_texto))].join(" / ");
+
+                    td.innerHTML = `
+                        <div class="p-2.5 rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all space-y-2">
+                            <!-- CABECERA DEL CUADRO: HORARIO ÚNICO Y CANTIDAD DE CUIDADORES -->
+                            <div class="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+                                <div class="px-2 py-0.5 rounded bg-amber-50/90 border border-amber-200 text-amber-900 font-bold text-[11px] flex items-center gap-1">
+                                    <i class="fa-solid fa-clock text-[10px]"></i>
+                                    <span>${horariosUnicos}</span>
+                                </div>
+                                ${asigs.length > 1 ? `
+                                    <span class="text-[10px] font-bold text-brand-700 bg-brand-50 border border-brand-200 px-1.5 py-0.5 rounded-full flex items-center gap-1" title="${asigs.length} cuidadores en este turno">
+                                        <i class="fa-solid fa-users text-[9px]"></i>
+                                        <span>${asigs.length}</span>
+                                    </span>
+                                ` : ''}
+                            </div>
+
+                            <!-- LISTA DE CUIDADORES DENTRO DEL MISMO CUADRO -->
+                            <div class="space-y-2 divide-y divide-slate-100">
+                                ${asigs.map((asig, idx) => {
+                                    let estadoHtml = '';
+                                    if (asig.estado_notificacion === 'ENVIADO') {
+                                        estadoHtml = `<span title="Notificado por WhatsApp" class="text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium"><i class="fa-brands fa-whatsapp"></i> Enviado</span>`;
+                                    } else if (asig.estado_notificacion === 'ERROR') {
+                                        estadoHtml = `<span title="Error WhatsApp" class="text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium"><i class="fa-solid fa-circle-exclamation"></i> Error</span>`;
+                                    } else {
+                                        estadoHtml = `<span title="Pendiente" class="text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium"><i class="fa-regular fa-clock"></i> Pendiente</span>`;
+                                    }
+
+                                    return `
+                                        <div class="${idx > 0 ? 'pt-1.5' : ''} flex items-center justify-between gap-1.5">
+                                            <span class="font-bold text-xs text-slate-900 leading-tight truncate">${asig.cuidador_nombre}</span>
+                                            <div class="flex items-center gap-1.5 shrink-0">
+                                                ${estadoHtml}
+                                                ${esAdmin ? `
+                                                    <button onclick="eliminarAsignacion(${asig.id_asignacion})" title="Desasignar cuidador" class="text-slate-300 hover:text-rose-600 transition-colors p-0.5">
+                                                        <i class="fa-regular fa-trash-can text-xs"></i>
+                                                    </button>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join("")}
+                            </div>
+
+                            <!-- BOTÓN PARA SUMAR OTRO CUIDADOR AL MISMO CUADRO (ADMIN) -->
+                            ${esAdmin ? `
+                                <div class="pt-1.5 border-t border-slate-100">
+                                    <button onclick="prepararAsignacionDirecta('${dia.fecha}', ${bloque.id_bloque})" class="w-full py-1 text-[10px] font-semibold text-brand-600 hover:text-brand-700 bg-slate-50 hover:bg-brand-50 rounded-lg border border-dashed border-slate-200 hover:border-brand-300 transition-colors flex items-center justify-center gap-1">
+                                        <i class="fa-solid fa-user-plus text-[9px]"></i>
+                                        <span>+ Agregar cuidador</span>
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    if (esAdmin) {
+                        td.innerHTML = `
+                            <div onclick="prepararAsignacionDirecta('${dia.fecha}', ${bloque.id_bloque})" class="h-20 border-2 border-dashed border-slate-200 hover:border-brand-400 rounded-xl flex flex-col items-center justify-center text-slate-300 hover:text-brand-600 cursor-pointer transition-all bg-slate-50/40 hover:bg-brand-50/30">
+                                <i class="fa-solid fa-plus text-xs mb-1"></i>
+                                <span class="text-[11px] font-semibold">Asignar</span>
+                            </div>
+                        `;
+                    } else {
+                        td.innerHTML = `
+                            <div class="h-20 rounded-xl flex items-center justify-center text-slate-300 text-xs italic bg-slate-50/30">
+                                Sin Cuidador
+                            </div>
+                        `;
+                    }
+                }
+
+                tr.appendChild(td);
+            });
+
+            tbody.appendChild(tr);
+        });
+
+    } catch (err) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="p-8 text-center text-rose-500">
+                    <p>No se pudo cargar el cuadrante semanal.</p>
+                </td>
+            </tr>
+        `;
+    }
+}
+
+
+// --- CARGAR ACTIVIDADES MÉDICAS ---
+async function cargarActividades() {
+    const fechaIso = formatDateIso(fechaActual);
+    const cont = document.getElementById("contenedorActividades");
+    const esAdmin = !!getToken();
+
+    try {
+        const res = await fetch(`/api/public/actividades-semana?fecha_base=${fechaIso}`);
+        if (!res.ok) throw new Error("Error obteniendo actividades");
+        const actividades = await res.json();
+
+        if (actividades.length === 0) {
+            cont.innerHTML = `
+                <div class="col-span-full text-center py-8 text-slate-400 bg-slate-50/70 rounded-xl border border-dashed border-slate-200">
+                    <i class="fa-solid fa-clipboard-check text-2xl mb-2 text-slate-300"></i>
+                    <p class="text-xs font-medium">No hay actividades ni visitas médicas programadas para esta semana.</p>
+                </div>
+            `;
+            return;
+        }
+
+        cont.innerHTML = actividades.map(act => {
+            const fechaObj = new Date(act.fecha + "T00:00:00");
+            const diasSemana = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+            const diaSem = diasSemana[fechaObj.getDay()];
+            const diaNum = fechaObj.getDate();
+            const horaStr = act.hora ? act.hora.slice(0, 5) : "";
+
+            const medicoNombre = act.medico_asignado 
+                ? `${act.medico_asignado.nombre} ${act.medico_asignado.apellido} (${act.medico_asignado.especialidad})`
+                : "Sin personal médico específico asignado";
+
+            return `
+                <div class="p-4 rounded-xl border border-slate-200 bg-white hover:border-teal-300 hover:shadow-md transition-all space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="px-2 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-teal-800 text-xs font-bold">
+                            ${diaSem} ${diaNum} &bull; ${horaStr} hrs
+                        </span>
+                        ${esAdmin ? `
+                            <div class="flex items-center space-x-1">
+                                <button onclick="editarActividad(${JSON.stringify(act).replace(/"/g, '&quot;')})" title="Editar" class="p-1 text-slate-400 hover:text-teal-600">
+                                    <i class="fa-regular fa-pen-to-square text-xs"></i>
+                                </button>
+                                <button onclick="eliminarActividad(${act.id_actividad})" title="Eliminar" class="p-1 text-slate-400 hover:text-rose-600">
+                                    <i class="fa-regular fa-trash-can text-xs"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <h4 class="font-bold text-sm text-slate-900">${act.titulo}</h4>
+                    
+                    ${act.descripcion ? `<p class="text-xs text-slate-600 leading-relaxed">${act.descripcion}</p>` : ''}
+
+                    <div class="pt-2 border-t border-slate-100 flex items-center space-x-2 text-xs ${act.medico_asignado ? 'text-teal-700 font-medium' : 'text-slate-400 italic'}">
+                        <i class="fa-solid fa-user-doctor"></i>
+                        <span class="truncate">${medicoNombre}</span>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+    } catch (err) {
+        cont.innerHTML = `<div class="col-span-full text-center py-6 text-rose-500 text-xs">Error cargando actividades médicas.</div>`;
+    }
+}
+
+
+// --- ACCIONES ADMIN: ASIGNAR TURNO A CUIDADOR (CON HORAS 00:00 - 23:59 Y MÚLTIPLES CUIDADORES) ---
+function openAsignacionModal() {
+    document.getElementById("asigFecha").value = formatDateIso(fechaActual);
+    document.getElementById("asigHoraInicio").value = "10:00";
+    document.getElementById("asigHoraFin").value = "14:30";
+    autoSugerirBloque();
+    limpiarCuidadoresAdicionales();
+    document.getElementById("asignacionModal").classList.remove("hidden");
+}
+
+function closeAsignacionModal() {
+    limpiarCuidadoresAdicionales();
+    document.getElementById("asignacionModal").classList.add("hidden");
+}
+
+function prepararAsignacionDirecta(fechaIso, idBloque) {
+    document.getElementById("asigFecha").value = fechaIso;
+    document.getElementById("asigBloque").value = idBloque;
+
+    // Configurar horas de referencia según el bloque elegido
+    const bloque = listaBloquesCache.find(b => b.id_bloque === idBloque);
+    if (bloque) {
+        if (bloque.codigo_bloque === "AM") {
+            document.getElementById("asigHoraInicio").value = "10:00";
+            document.getElementById("asigHoraFin").value = "14:30";
+        } else if (bloque.codigo_bloque === "PM1") {
+            document.getElementById("asigHoraInicio").value = "14:30";
+            document.getElementById("asigHoraFin").value = "18:00";
+        } else if (bloque.codigo_bloque === "PM2") {
+            document.getElementById("asigHoraInicio").value = "18:00";
+            document.getElementById("asigHoraFin").value = "21:00";
+        } else if (bloque.codigo_bloque === "N") {
+            document.getElementById("asigHoraInicio").value = "21:00";
+            document.getElementById("asigHoraFin").value = "10:00";
+        }
+    }
+
+    limpiarCuidadoresAdicionales();
+    document.getElementById("asignacionModal").classList.remove("hidden");
+}
+
+async function handleGuardarAsignacion(e) {
+    e.preventDefault();
+    const token = getToken();
+    const fecha = document.getElementById("asigFecha").value;
+    const id_cuidador_principal = parseInt(document.getElementById("asigCuidador").value);
+    const hora_inicio = document.getElementById("asigHoraInicio").value;
+    const hora_fin = document.getElementById("asigHoraFin").value;
+    const id_bloque = parseInt(document.getElementById("asigBloque").value);
+
+    // Recolectar cuidador principal y cuidadores adicionales (opcionales)
+    const cuidadoresIds = [];
+    if (id_cuidador_principal) {
+        cuidadoresIds.push(id_cuidador_principal);
+    }
+
+    document.querySelectorAll(".cuidador-adicional-select").forEach(sel => {
+        const val = parseInt(sel.value);
+        if (val && !cuidadoresIds.includes(val)) {
+            cuidadoresIds.push(val);
+        }
+    });
+
+    if (cuidadoresIds.length === 0) {
+        alert("Debes seleccionar al menos un/a cuidador/a.");
+        return;
+    }
+
+    const payload = {
+        fecha,
+        id_cuidador: cuidadoresIds[0],
+        cuidadores_ids: cuidadoresIds,
+        hora_inicio: hora_inicio.length === 5 ? `${hora_inicio}:00` : hora_inicio,
+        hora_fin: hora_fin.length === 5 ? `${hora_fin}:00` : hora_fin,
+        id_bloque
+    };
+
+    try {
+        const res = await fetch("/api/admin/asignaciones", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            closeAsignacionModal();
+            cargarCuadrante();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al asignar turno");
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
+}
+
+async function eliminarAsignacion(idAsignacion) {
+    if (!confirm("¿Deseas desasignar este turno de cuidador?")) return;
+    const token = getToken();
+    try {
+        const res = await fetch(`/api/admin/asignaciones/${idAsignacion}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+            cargarCuadrante();
+        } else {
+            alert("No se pudo desasignar el turno");
+        }
+    } catch (e) {
+        alert("Error de red");
+    }
+}
+
+
+// --- ACCIONES ADMIN: ACTIVIDADES MÉDICAS ---
+function openActividadModal() {
+    document.getElementById("actividadModalTitle").textContent = "Programar Actividad Médica";
+    document.getElementById("actId").value = "";
+    document.getElementById("actFecha").value = formatDateIso(fechaActual);
+    document.getElementById("actHora").value = "10:00";
+    document.getElementById("actTitulo").value = "";
+    document.getElementById("actDescripcion").value = "";
+    document.getElementById("actMedico").value = "";
+    document.getElementById("actividadModal").classList.remove("hidden");
+}
+
+function closeActividadModal() {
+    document.getElementById("actividadModal").classList.add("hidden");
+}
+
+function editarActividad(act) {
+    document.getElementById("actividadModalTitle").textContent = "Editar Actividad Médica";
+    document.getElementById("actId").value = act.id_actividad;
+    document.getElementById("actFecha").value = act.fecha;
+    document.getElementById("actHora").value = act.hora ? act.hora.slice(0, 5) : "10:00";
+    document.getElementById("actTitulo").value = act.titulo;
+    document.getElementById("actDescripcion").value = act.descripcion || "";
+    document.getElementById("actMedico").value = act.id_medico || "";
+    document.getElementById("actividadModal").classList.remove("hidden");
+}
+
+async function handleGuardarActividad(e) {
+    e.preventDefault();
+    const token = getToken();
+    const id = document.getElementById("actId").value;
+    const fecha = document.getElementById("actFecha").value;
+    const hora = document.getElementById("actHora").value;
+    const titulo = document.getElementById("actTitulo").value.trim();
+    const descripcion = document.getElementById("actDescripcion").value.trim();
+    const medVal = document.getElementById("actMedico").value;
+    const id_medico = medVal ? parseInt(medVal) : null;
+
+    const payload = {
+        fecha,
+        hora: hora.length === 5 ? `${hora}:00` : hora,
+        titulo,
+        descripcion,
+        id_medico
+    };
+
+    try {
+        const url = id ? `/api/admin/actividades/${id}` : "/api/admin/actividades";
+        const method = id ? "PUT" : "POST";
+
+        const res = await fetch(url, {
+            method,
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            closeActividadModal();
+            cargarActividades();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al guardar actividad");
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
+}
+
+async function eliminarActividad(idActividad) {
+    if (!confirm("¿Eliminar esta actividad médica?")) return;
+    const token = getToken();
+    try {
+        const res = await fetch(`/api/admin/actividades/${idActividad}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+            cargarActividades();
+        } else {
+            alert("No se pudo eliminar la actividad");
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
+}
+
+
+// --- ACCIONES ADMIN: GESTIÓN DE CUIDADORES ---
+function openCuidadoresModal() {
+    renderizarListaCuidadoresModal();
+    document.getElementById("cuidadoresModal").classList.remove("hidden");
+}
+
+function closeCuidadoresModal() {
+    document.getElementById("cuidadoresModal").classList.add("hidden");
+}
+
+function renderizarListaCuidadoresModal() {
+    const cont = document.getElementById("listaCuidadores");
+    if (listaCuidadoresCache.length === 0) {
+        cont.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">No hay cuidadores registrados.</p>`;
+        return;
+    }
+
+    cont.innerHTML = listaCuidadoresCache.map(c => `
+        <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white">
+            <div>
+                <div class="text-xs font-bold text-slate-900">${c.nombre} ${c.apellido}</div>
+                <div class="text-[11px] text-slate-500">${c.rol_trabajo} &bull; ${c.telefono_whatsapp}</div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${c.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
+                    ${c.activo ? 'Activo' : 'Inactivo'}
+                </span>
+                ${c.activo ? `
+                    <button onclick="desactivarCuidador(${c.id_cuidador})" title="Desactivar" class="text-xs text-rose-500 hover:text-rose-700 p-1">
+                        <i class="fa-solid fa-user-xmark"></i>
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `).join("");
+}
+
+async function handleCrearCuidador(e) {
+    e.preventDefault();
+    const token = getToken();
+    const nombre = document.getElementById("cuidNombre").value.trim();
+    const apellido = document.getElementById("cuidApellido").value.trim();
+    const telefono_whatsapp = document.getElementById("cuidTelefono").value.trim();
+    const rol_trabajo = document.getElementById("cuidRol").value.trim();
+
+    try {
+        const res = await fetch("/api/admin/cuidadores", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, rol_trabajo, activo: true })
+        });
+        if (res.ok) {
+            document.getElementById("nuevoCuidadorForm").reset();
+            await cargarDatosIniciales();
+            renderizarListaCuidadoresModal();
+            cargarCuadrante();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al agregar cuidador");
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
+}
+
+async function desactivarCuidador(idCuidador) {
+    if (!confirm("¿Desactivar este cuidador?")) return;
+    const token = getToken();
+    try {
+        const res = await fetch(`/api/admin/cuidadores/${idCuidador}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+            await cargarDatosIniciales();
+            renderizarListaCuidadoresModal();
+            cargarCuadrante();
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
+}
+
+
+// --- ACCIONES ADMIN: GESTIÓN DE PERSONAL MÉDICO ---
+function openMedicosModal() {
+    renderizarListaMedicosModal();
+    document.getElementById("medicosModal").classList.remove("hidden");
+}
+
+function closeMedicosModal() {
+    document.getElementById("medicosModal").classList.add("hidden");
+}
+
+function renderizarListaMedicosModal() {
+    const cont = document.getElementById("listaMedicos");
+    if (listaMedicosCache.length === 0) {
+        cont.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">No hay personal médico registrado.</p>`;
+        return;
+    }
+
+    cont.innerHTML = listaMedicosCache.map(m => `
+        <div class="flex items-center justify-between p-3 rounded-xl border border-teal-200 bg-white">
+            <div>
+                <div class="text-xs font-bold text-slate-900">${m.nombre} ${m.apellido}</div>
+                <div class="text-[11px] text-teal-700">${m.especialidad} &bull; ${m.telefono_whatsapp}</div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${m.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
+                    ${m.activo ? 'Activo' : 'Inactivo'}
+                </span>
+                ${m.activo ? `
+                    <button onclick="desactivarMedico(${m.id_medico})" title="Desactivar" class="text-xs text-rose-500 hover:text-rose-700 p-1">
+                        <i class="fa-solid fa-user-xmark"></i>
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `).join("");
+}
+
+async function handleCrearMedico(e) {
+    e.preventDefault();
+    const token = getToken();
+    const nombre = document.getElementById("medNombre").value.trim();
+    const apellido = document.getElementById("medApellido").value.trim();
+    const telefono_whatsapp = document.getElementById("medTelefono").value.trim();
+    const especialidad = document.getElementById("medEspecialidad").value.trim();
+
+    try {
+        const res = await fetch("/api/admin/medicos", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, especialidad, activo: true })
+        });
+        if (res.ok) {
+            document.getElementById("nuevoMedicoForm").reset();
+            await cargarDatosIniciales();
+            renderizarListaMedicosModal();
+            cargarActividades();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al registrar médico");
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
+}
+
+async function desactivarMedico(idMedico) {
+    if (!confirm("¿Desactivar este miembro del personal médico?")) return;
+    const token = getToken();
+    try {
+        const res = await fetch(`/api/admin/medicos/${idMedico}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+            await cargarDatosIniciales();
+            renderizarListaMedicosModal();
+            cargarActividades();
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
+}
+
+
+// --- ACCIONES ADMIN: WHATSAPP ---
+function openNotificacionModal() {
+    document.getElementById("notifFecha").value = formatDateIso(new Date());
+    document.getElementById("notifResultados").classList.add("hidden");
+    document.getElementById("notificacionModal").classList.remove("hidden");
+}
+
+function closeNotificacionModal() {
+    document.getElementById("notificacionModal").classList.add("hidden");
+}
+
+async function ejecutarEnvioWhatsApp() {
+    const token = getToken();
+    const fecha = document.getElementById("notifFecha").value;
+    const btn = document.getElementById("btnDispararWhatsApp");
+    const resDiv = document.getElementById("notifResultados");
+    const listaDet = document.getElementById("resDetallesLista");
+
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enviando...`;
+
+    try {
+        const res = await fetch("/api/admin/notificaciones/enviar-dia", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ fecha })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            document.getElementById("resTotal").textContent = data.total_asignaciones;
+            document.getElementById("resEnviados").textContent = data.enviados;
+            document.getElementById("resErrores").textContent = data.errores;
+
+            if (data.detalles.length === 0) {
+                listaDet.innerHTML = `<p class="text-xs text-slate-500 py-2">No se encontraron asignaciones de cuidadores para la fecha seleccionada.</p>`;
+            } else {
+                listaDet.innerHTML = data.detalles.map(d => `
+                    <div class="p-2.5 rounded-lg border border-slate-200 bg-white space-y-1">
+                        <div class="flex items-center justify-between text-xs font-bold">
+                            <span>${d.personal} (${d.telefono})</span>
+                            <span class="${d.estado.includes('ENVIADO') ? 'text-emerald-600' : 'text-rose-600'}">
+                                ${d.estado}
+                            </span>
+                        </div>
+                        <div class="text-[11px] text-slate-600">Bloque: ${d.bloque} &bull; Horario: <strong>${d.horario}</strong></div>
+                        ${d.detalle_error ? `<div class="text-[10px] text-amber-600">${d.detalle_error}</div>` : ''}
+                    </div>
+                `).join("");
+            }
+
+            resDiv.classList.remove("hidden");
+            cargarCuadrante();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al disparar notificaciones");
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> <span>Disparar Envío Ahora</span>`;
+    }
+}
+
+
+// --- MODAL LOGIN HELPER ---
+function openLoginModal() {
+    document.getElementById("loginModal").classList.remove("hidden");
+}
+
+function closeLoginModal() {
+    document.getElementById("loginModal").classList.add("hidden");
+}

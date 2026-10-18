@@ -8,7 +8,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
-
 from app.database import engine, Base, get_db
 from app.models import Usuario, Cuidador, PersonalMedico, BloqueTurno, AsignacionTurno, ActividadMedica
 from app import schemas, auth, whatsapp

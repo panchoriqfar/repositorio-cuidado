@@ -102,23 +102,24 @@ def get_current_user(
 
 
 def require_super_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
-    """Valida que el usuario tenga rol exclusivo de 'super_user'."""
-    rol_normalizado = (current_user.rol or "").lower()
-    if rol_normalizado != "super_user" and current_user.rol != "SUPER_USER":
+    """Valida que el usuario tenga rol exclusivo de Super Admin / super_user."""
+    rol_normalizado = (current_user.rol or "").lower().strip()
+    if rol_normalizado not in ["super_user", "super_admin", "superadmin"] and current_user.rol not in ["SUPER_USER", "SUPER_ADMIN", "SUPERADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso restringido: Se requiere rol de super_user"
+            detail="Acceso restringido: Solo el super admin / super_user tiene permisos para esta acción."
         )
     return current_user
 
 
 def require_admin_or_super_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
-    """Valida que el usuario tenga rol de 'super_user' o 'admin'."""
-    rol_normalizado = (current_user.rol or "").lower()
-    if rol_normalizado not in ["super_user", "admin", "admin1"] and current_user.rol not in ["ADMIN", "SUPER_USER"]:
+    """Valida que el usuario tenga rol de 'super_user', 'super_admin' o 'admin'."""
+    rol_normalizado = (current_user.rol or "").lower().strip()
+    roles_permitidos = ["super_user", "super_admin", "superadmin", "admin"]
+    if rol_normalizado not in roles_permitidos and current_user.rol not in ["SUPER_USER", "SUPER_ADMIN", "ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso restringido: Se requiere rol de administrador o super_user"
+            detail="Acceso restringido: Se requiere rol de administrador o super admin"
         )
     return current_user
 

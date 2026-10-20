@@ -6,18 +6,18 @@ Sistema integral de gestión de turnos para centros de atención, clínicas y se
 
 ## 🚀 Nuevas Reglas y Características Implementadas
 
-1. **Gestión de Usuarios y Roles (RBAC)**:
-   - **`super_user`**: Acceso total y absoluto. Puede crear/editar administradores, gestionar usuarios, orquestar turnos, crear y **eliminar cuidadores**.
-   - **`admin`**: Mismos permisos operativos (orquestar turnos, crear cuidadores, gestionar actividades médicas), con la **restricción estricta de que NO PUEDE eliminar cuidadores** ni crear usuarios con rol `super_user`.
+1. **Gestión de Usuarios y Roles (RBAC Exclusivo)**:
+   - **`super_user` (Super Admin)**: Acceso total y exclusivo a la administración de cuentas. **Solo él puede ver la lista de usuarios, crear administradores, crear otros superusuarios y eliminar usuarios o cuidadores**.
+   - **`admin`**: Permisos operativos para gestión de turnos de cuidadores, actividades médicas y WhatsApp. **Tiene estrictamente prohibido ver, crear, editar o eliminar usuarios y superusuarios, así como eliminar cuidadores**.
 
 2. **Creación del Superusuario Inicial (Seed / Arranque)**:
    - Al arrancar la aplicación, se verifica automáticamente si existen usuarios. Si no, se crea el superusuario por defecto usando las variables de entorno `SUPERUSER_USERNAME` y `SUPERUSER_PASSWORD`, con su contraseña cifrada mediante `passlib` (bcrypt).
 
 3. **Endpoints y Menú Protegidos de Creación de Perfiles**:
-   - `GET /api/admin/usuarios`: Listar usuarios del sistema (solo `super_user` y `admin`).
-   - `POST /api/admin/usuarios`: Registro de nuevos usuarios con control de jerarquía (`admin` no puede otorgar `super_user`).
-   - `PUT /api/admin/usuarios/{id_usuario}`: Modificación controlada de usuarios.
-   - `DELETE /api/admin/usuarios/{id_usuario}`: Eliminación exclusiva por `super_user`.
+   - `GET /api/admin/usuarios`: Listar usuarios del sistema (exclusivo `super_user`, `admin` recibe 403 Forbidden).
+   - `POST /api/admin/usuarios`: Registro de nuevos administradores y superusuarios (exclusivo `super_user`, `admin` recibe 403 Forbidden).
+   - `PUT /api/admin/usuarios/{id_usuario}`: Modificación de cuentas (exclusivo `super_user`).
+   - `DELETE /api/admin/usuarios/{id_usuario}`: Eliminación de cuentas (exclusivo `super_user`).
 
 4. **Separación Estricta en Base de Datos**:
    - **`Cuidadores` (`cuidadores`)**: A quienes **exclusivamente** se les asignan turnos de cuidado.

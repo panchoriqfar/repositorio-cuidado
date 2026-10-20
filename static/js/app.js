@@ -67,7 +67,9 @@ async function checkAuth() {
         if (res.ok) {
             const user = await res.json();
             currentUserProfile = user;
-            const esSuper = (user.rol || "").toLowerCase() === "super_user";
+            const rolNorm = (user.rol || "").toLowerCase().trim();
+            const esSuper = ["super_user", "super_admin", "superadmin"].includes(rolNorm);
+
             adminUsername.innerHTML = `
                 <span class="flex items-center gap-1.5">
                     <i class="fa-solid ${esSuper ? 'fa-crown text-amber-500' : 'fa-shield text-blue-500'}"></i>
@@ -85,10 +87,35 @@ async function checkAuth() {
             btnNuevaAsignacion.classList.add("inline-flex");
             btnNuevaActividad.classList.remove("hidden");
             btnNuevaActividad.classList.add("inline-flex");
-            if (btnGestionUsuarios) {
-                btnGestionUsuarios.classList.remove("hidden");
-                btnGestionUsuarios.classList.add("inline-flex");
+
+            // Visibilidad exclusiva de botones de usuarios: Solo Super Admin
+            const btnNavUsuarios = document.getElementById("btnNavUsuarios");
+            if (esSuper) {
+                adminBadge.classList.add("cursor-pointer");
+                adminBadge.title = "Click para gestionar Usuarios y Roles (Super Admin)";
+                adminBadge.onclick = openUsuariosModal;
+                if (btnNavUsuarios) {
+                    btnNavUsuarios.classList.remove("hidden");
+                    btnNavUsuarios.classList.add("inline-flex");
+                }
+                if (btnGestionUsuarios) {
+                    btnGestionUsuarios.classList.remove("hidden");
+                    btnGestionUsuarios.classList.add("inline-flex");
+                }
+            } else {
+                adminBadge.classList.remove("cursor-pointer");
+                adminBadge.title = "Sesión de Administrador";
+                adminBadge.onclick = null;
+                if (btnNavUsuarios) {
+                    btnNavUsuarios.classList.add("hidden");
+                    btnNavUsuarios.classList.remove("inline-flex");
+                }
+                if (btnGestionUsuarios) {
+                    btnGestionUsuarios.classList.add("hidden");
+                    btnGestionUsuarios.classList.remove("inline-flex");
+                }
             }
+
             loginBtn.classList.add("hidden");
             return true;
         } else {
@@ -995,12 +1022,8 @@ function closeLoginModal() {
 }
 
 
-// --- ACCIONES ADMIN: GESTIÓN DE USUARIOS Y ROLES (RBAC) ---
+// --- ACCIONES ADMIN: GESTIÓN DE USUARIOS Y ROLES (RBAC EXCLUSIVO SUPER ADMIN) ---
 async function openUsuariosModal() {
-    const modal = document.getElementById("usuariosModal");
-    if (!modal) return;
-    modal.classList.remove("hidden");
-
     // Si aún no tenemos perfil en memoria, consultar /api/auth/me
     if (!currentUserProfile) {
         const token = getToken();
@@ -1017,6 +1040,17 @@ async function openUsuariosModal() {
             }
         }
     }
+
+    const rolNorm = ((currentUserProfile && currentUserProfile.rol) || "").toLowerCase().trim();
+    const esSuper = ["super_user", "super_admin", "superadmin"].includes(rolNorm);
+    if (!esSuper) {
+        alert("Acceso restringido: Solo el Super Admin tiene autorización para gestionar, crear, ver o eliminar usuarios.");
+        return;
+    }
+
+    const modal = document.getElementById("usuariosModal");
+    if (!modal) return;
+    modal.classList.remove("hidden");
 
     actualizarInfoSesionUsuariosModal();
     await cargarUsuariosModal();
@@ -1041,42 +1075,27 @@ function actualizarInfoSesionUsuariosModal() {
     const avisoJerarquia = document.getElementById("avisoJerarquiaRol");
 
     if (!currentUserProfile) {
-        if (sesionNombre) sesionNombre.textContent = "Usuario conectado";
+        if (sesionNombre) sesionNombre.textContent = "Super Admin";
         return;
     }
 
-    const esSuper = (currentUserProfile.rol || "").toLowerCase() === "super_user";
     if (sesionNombre) sesionNombre.textContent = currentUserProfile.username;
 
     if (sesionBadge) {
-        if (esSuper) {
-            sesionBadge.innerHTML = `
-                <span class="inline-flex items-center gap-1 bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold">
-                    <i class="fa-solid fa-crown text-amber-500"></i> super_user (Control Total)
-                </span>
-            `;
-        } else {
-            sesionBadge.innerHTML = `
-                <span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-0.5 rounded-full font-bold">
-                    <i class="fa-solid fa-shield text-blue-500"></i> admin (Operativo)
-                </span>
-            `;
-        }
+        sesionBadge.innerHTML = `
+            <span class="inline-flex items-center gap-1 bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold">
+                <i class="fa-solid fa-crown text-amber-500"></i> super_user (Acceso Total Exclusivo)
+            </span>
+        `;
     }
 
     if (optSuperUser) {
-        if (esSuper) {
-            optSuperUser.disabled = false;
-            optSuperUser.hidden = false;
-            optSuperUser.textContent = "Superusuario (super_user)";
-            if (avisoJerarquia) avisoJerarquia.classList.add("hidden");
-        } else {
-            optSuperUser.disabled = true;
-            optSuperUser.hidden = true;
-            const rolSelect = document.getElementById("usrRol");
-            if (rolSelect) rolSelect.value = "admin";
-            if (avisoJerarquia) avisoJerarquia.classList.remove("hidden");
-        }
+        optSuperUser.disabled = false;
+        optSuperUser.hidden = false;
+        optSuperUser.textContent = "Superusuario (super_user)";
+    }
+    if (avisoJerarquia) {
+        avisoJerarquia.classList.add("hidden");
     }
 }
 

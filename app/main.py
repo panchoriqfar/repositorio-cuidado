@@ -245,39 +245,31 @@ def get_mi_perfil(current_user: Usuario = Depends(auth.get_current_user)):
     return current_user
 
 
-# --- GESTIÓN DE USUARIOS Y ROLES (RBAC: SUPER_USER Y ADMIN) ---
+# --- GESTIÓN DE USUARIOS Y ROLES (RBAC EXCLUSIVO SUPER_USER) ---
 @app.get("/api/admin/usuarios", response_model=List[schemas.UsuarioResponse])
 def listar_usuarios(
-    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    current_user: Usuario = Depends(auth.require_super_user),
     db: Session = Depends(get_db)
 ):
-    """Permite listar los usuarios del sistema. Disponible para super_user y admin."""
+    """Permite listar los usuarios del sistema. Disponible EXCLUSIVAMENTE para super_user."""
     return db.query(Usuario).order_by(Usuario.id_usuario.asc()).all()
 
 @app.post("/api/admin/usuarios", response_model=schemas.UsuarioResponse)
 def crear_usuario(
     datos: schemas.UsuarioCreate,
-    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    current_user: Usuario = Depends(auth.require_super_user),
     db: Session = Depends(get_db)
 ):
     """
     Crea un nuevo usuario en el sistema.
-    Restricción de jerarquía:
-    - super_user puede crear cualquier usuario ('super_user' o 'admin').
-    - admin puede crear nuevos administradores ('admin') pero tiene PROHIBIDO crear o asignar rol 'super_user'.
+    RESTRICCIÓN ESTRICTA: Solo el super_user puede crear usuarios (admin o super_user).
+    Los administradores estándar tienen prohibido el acceso a este endpoint.
     """
     rol_solicitado = (datos.rol or "admin").lower().strip()
     if rol_solicitado not in ["super_user", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Rol inválido. Los roles permitidos son: 'super_user' o 'admin'"
-        )
-
-    # Restricción jerárquica estricta
-    if rol_solicitado == "super_user" and (current_user.rol or "").lower() != "super_user":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Restricción de jerarquía: Un administrador no tiene permitido crear o asignar el rol de 'super_user'"
         )
 
     username_limpio = datos.username.strip()
@@ -308,33 +300,18 @@ def crear_usuario(
 def actualizar_usuario(
     id_usuario: int,
     datos: schemas.UsuarioUpdate,
-    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    current_user: Usuario = Depends(auth.require_super_user),
     db: Session = Depends(get_db)
 ):
-    """Actualiza datos de un usuario respetando la jerarquía RBAC."""
+    """Actualiza datos de un usuario. Exclusivo para super_user."""
     target_user = db.query(Usuario).filter(Usuario.id_usuario == id_usuario).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    es_super = (current_user.rol or "").lower() == "super_user"
-
-    # Admin no puede modificar a un super_user (a menos que sea él mismo)
-    if (target_user.rol or "").lower() == "super_user" and not es_super and current_user.id_usuario != target_user.id_usuario:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Un administrador no tiene permisos para modificar a un super_user"
-        )
-
-    # Admin no puede promover a nadie a super_user
     if datos.rol:
         nuevo_rol = datos.rol.lower().strip()
         if nuevo_rol not in ["super_user", "admin"]:
             raise HTTPException(status_code=400, detail="Rol inválido ('super_user' o 'admin')")
-        if nuevo_rol == "super_user" and not es_super:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Restricción de jerarquía: Un administrador no puede asignar el rol de 'super_user'"
-            )
         target_user.rol = nuevo_rol
 
     if datos.username:

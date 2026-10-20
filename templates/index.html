@@ -69,6 +69,10 @@
                         <i class="fa-brands fa-whatsapp text-sm"></i>
                         <span class="hidden sm:inline">Actualización Diaria</span>
                     </button>
+                    <button onclick="ejecutarEnvioCorreoDiario()" id="btnCorreoDiario" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-sky-600 hover:bg-sky-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" title="Enviar Correo Diario a cuidadores en turno">
+                        <i class="fa-solid fa-envelope text-sm"></i>
+                        <span class="hidden sm:inline">Enviar Correo Diario</span>
+                    </button>
                     <button onclick="openCambiarPasswordModal(false)" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm" title="Cambiar Contraseña">
                         <i class="fa-solid fa-key text-amber-600"></i>
                         <span class="hidden sm:inline">Cambiar Contraseña</span>
@@ -163,6 +167,12 @@
                     class="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
                     <i class="fa-brands fa-whatsapp text-sm"></i>
                     <span>Enviar a toda la semana</span>
+                </button>
+                <button onclick="ejecutarEnvioCorreoSemanal()" id="btnCorreoSemanal"
+                    class="px-4 py-2 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    title="Enviar planificación semanal por correo electrónico">
+                    <i class="fa-solid fa-envelope text-sm"></i>
+                    <span>Enviar Correo Semanal</span>
                 </button>
             </div>
         </div>
@@ -380,7 +390,7 @@
                         <label class="block text-[11px] font-semibold text-slate-600 mb-1">Apellido <span class="text-slate-400 font-normal">(opcional)</span></label>
                         <input type="text" id="cuidApellido" placeholder="Ej: Morales" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                     </div>
-                    <div class="sm:col-span-2">
+                    <div>
                         <label class="block text-[11px] font-semibold text-slate-600 mb-1">WhatsApp <span class="text-rose-500">*</span></label>
                         <div class="flex items-center gap-2">
                             <span class="px-3 py-2 text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg whitespace-nowrap">+569</span>
@@ -389,6 +399,10 @@
                                 oninput="this.value=this.value.replace(/\D/g,'').slice(0,8)">
                         </div>
                         <p id="cuidTelefonoError" class="text-[10px] text-rose-500 mt-1 hidden">Debes ingresar exactamente 8 dígitos numéricos</p>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Correo Electrónico <span class="text-slate-400 font-normal">(opcional)</span></label>
+                        <input type="email" id="cuidMail" placeholder="ejemplo@correo.com" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
                     </div>
                 </div>
                 <div class="text-right">
@@ -598,6 +612,6 @@
     </div>
 
     <!-- SCRIPT PRINCIPAL CON CACHE-BUSTING -->
-    <script src="/static/js/app.js?v=4.0"></script>
+    <script src="/static/js/app.js?v=5.0"></script>
 </body>
 </html>

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from app.database import engine, Base, get_db
 from app.models import Usuario, Cuidador, PersonalMedico, BloqueTurno, AsignacionTurno, ActividadMedica
-from app import schemas, auth, whatsapp
+from app import schemas, auth, whatsapp, email_service
 
 load_dotenv()
 
@@ -19,15 +19,21 @@ load_dotenv()
 Base.metadata.create_all(bind=engine)
 
 def migrar_esquema_bd(target_engine):
-    """Garantiza la existencia de columnas nuevas como must_change_password."""
+    """Garantiza la existencia de columnas nuevas como must_change_password y cuidadores.mail."""
     from sqlalchemy import inspect, text
     try:
         inspector = inspect(target_engine)
-        if "usuarios" in inspector.get_table_names():
+        tablas = inspector.get_table_names()
+        if "usuarios" in tablas:
             columnas = [c["name"] for c in inspector.get_columns("usuarios")]
             if "must_change_password" not in columnas:
                 with target_engine.begin() as conn:
                     conn.execute(text("ALTER TABLE usuarios ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL"))
+        if "cuidadores" in tablas:
+            cuid_cols = [c["name"] for c in inspector.get_columns("cuidadores")]
+            if "mail" not in cuid_cols:
+                with target_engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE cuidadores ADD COLUMN mail VARCHAR(150)"))
     except Exception as exc:
         print(f"Aviso migración de esquema: {exc}")
 
@@ -424,10 +430,12 @@ def crear_cuidador(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El número de WhatsApp debe tener el formato +569XXXXXXXX (exactamente 8 dígitos después de +569)"
         )
+    mail_limpio = datos.mail.strip() if datos.mail and datos.mail.strip() else None
     nuevo = Cuidador(
         nombre=nombre_limpio,
         apellido=(datos.apellido or "").strip(),
         telefono_whatsapp=datos.telefono_whatsapp.strip(),
+        mail=mail_limpio,
         rol_trabajo="",
         activo=True
     )
@@ -776,3 +784,32 @@ def enviar_notificaciones_semana(
     fecha_base = payload.fecha_base or date.today()
     resultado = whatsapp.enviar_notificaciones_semana_completa(fecha_base, db)
     return resultado
+
+
+# --- NOTIFICACIONES POR CORREO ELECTRÓNICO (GMAIL SMTP) ---
+@app.post("/api/admin/notificaciones/enviar-email-dia", response_model=schemas.NotificacionEmailResponse)
+def enviar_email_del_dia(
+    payload: schemas.NotificacionEmailDiaRequest,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Envía notificación por correo a los cuidadores asignados al turno del día,
+    detallando sus horarios y actividades médicas.
+    """
+    target_date = payload.fecha or date.today()
+    return email_service.enviar_correos_del_dia(target_date, db)
+
+
+@app.post("/api/admin/notificaciones/enviar-email-semana", response_model=schemas.NotificacionEmailResponse)
+def enviar_email_semana_completa(
+    payload: schemas.NotificacionEmailSemanalRequest,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Envía planificación semanal consolidada por correo a todos los cuidadores
+    con turnos asignados en la semana, incluyendo sus actividades médicas.
+    """
+    fecha_base = payload.fecha_base or date.today()
+    return email_service.enviar_correos_semana_completa(fecha_base, db)

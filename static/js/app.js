@@ -795,7 +795,10 @@ function renderizarListaCuidadoresModal() {
         <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white">
             <div>
                 <div class="text-xs font-bold text-slate-900">${(c.nombre + (c.apellido ? ' ' + c.apellido : '')).trim()}</div>
-                <div class="text-[11px] text-slate-500 font-mono flex items-center gap-1.5"><i class="fa-brands fa-whatsapp text-emerald-600"></i> ${c.telefono_whatsapp}</div>
+                <div class="text-[11px] text-slate-500 font-mono flex flex-wrap items-center gap-2 mt-0.5">
+                    <span class="flex items-center gap-1"><i class="fa-brands fa-whatsapp text-emerald-600"></i> ${c.telefono_whatsapp}</span>
+                    ${c.mail ? `<span class="flex items-center gap-1 text-slate-600 font-sans"><i class="fa-solid fa-envelope text-sky-600"></i> ${c.mail}</span>` : `<span class="text-[10px] text-slate-400 italic">Sin correo</span>`}
+                </div>
             </div>
             <div class="flex items-center space-x-2">
                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${c.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
@@ -839,6 +842,8 @@ async function handleCrearCuidador(e) {
     if (errorTel) errorTel.classList.add("hidden");
 
     const telefono_whatsapp = "+569" + numeros;
+    const mailInput = document.getElementById("cuidMail");
+    const mail = mailInput && mailInput.value.trim() ? mailInput.value.trim() : null;
 
     try {
         const res = await fetch("/api/admin/cuidadores", {
@@ -847,7 +852,7 @@ async function handleCrearCuidador(e) {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
             },
-            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, activo: true })
+            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, mail, activo: true })
         });
         if (res.ok) {
             document.getElementById("nuevoCuidadorForm").reset();
@@ -1478,5 +1483,106 @@ async function ejecutarEnvioWhatsAppSemanal() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = origHtml;
+    }
+}
+
+
+// --- NOTIFICACIONES POR CORREO ELECTRÓNICO (GMAIL SMTP) ---
+
+async function ejecutarEnvioCorreoDiario() {
+    const btn = document.getElementById("btnCorreoDiario");
+    const token = getToken();
+    if (!token) { alert("Debes iniciar sesión para enviar notificaciones."); return; }
+
+    const fechaIso = formatDateIso(fechaActual);
+    if (!confirm(`¿Enviar Correo Diario a los cuidadores en turno para la fecha ${fechaIso}?\n\nSe enviará a quienes tengan un correo electrónico válido registrado.`)) return;
+
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enviando...`;
+    }
+
+    try {
+        const res = await fetch("/api/admin/notificaciones/enviar-email-dia", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ fecha: fechaIso })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            let resumen = `📧 Notificación diaria por correo procesada\n\n📅 Fecha: ${data.periodo}\n👥 Cuidadores en turno: ${data.total_cuidadores}\n✉️ Correos enviados: ${data.enviados}\n⚠️ Omitidos (sin correo): ${data.omitidos}\n❌ Errores: ${data.errores}\n`;
+            if (data.detalles && data.detalles.length > 0) {
+                resumen += "\nDetalle:\n";
+                data.detalles.forEach(d => {
+                    resumen += `• ${d.cuidador} [${d.mail || 'Sin correo'}]: ${d.estado}${d.detalle ? ` (${d.detalle})` : ''}\n`;
+                });
+            } else if (data.total_cuidadores === 0) {
+                resumen += "\nNo hay turnos asignados para esta fecha.";
+            }
+            alert(resumen);
+        } else {
+            alert(`❌ Error al enviar correos: ${data.detail || 'Error desconocido'}`);
+        }
+    } catch (err) {
+        alert("❌ Error de conexión al enviar correos diarios.");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
+
+async function ejecutarEnvioCorreoSemanal() {
+    const btn = document.getElementById("btnCorreoSemanal");
+    const token = getToken();
+    if (!token) { alert("Debes iniciar sesión para enviar notificaciones."); return; }
+
+    const fechaIso = formatDateIso(fechaActual);
+    if (!confirm(`¿Enviar Correo Semanal con la planificación a todos los cuidadores de la semana?\n\nSe enviará a todos los cuidadores con turnos asignados que tengan correo configurado.`)) return;
+
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enviando semana...`;
+    }
+
+    try {
+        const res = await fetch("/api/admin/notificaciones/enviar-email-semana", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ fecha_base: fechaIso })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            let resumen = `📧 Planificación semanal por correo procesada\n\n📅 Periodo: ${data.periodo}\n👥 Cuidadores con turnos: ${data.total_cuidadores}\n✉️ Correos enviados: ${data.enviados}\n⚠️ Omitidos (sin correo): ${data.omitidos}\n❌ Errores: ${data.errores}\n`;
+            if (data.detalles && data.detalles.length > 0) {
+                resumen += "\nDetalle por cuidador/a:\n";
+                data.detalles.forEach(d => {
+                    resumen += `• ${d.cuidador} [${d.mail || 'Sin correo'}]: ${d.estado}${d.detalle ? ` (${d.detalle})` : ''}\n`;
+                });
+            } else if (data.total_cuidadores === 0) {
+                resumen += "\nNo hay turnos asignados para esta semana.";
+            }
+            alert(resumen);
+        } else {
+            alert(`❌ Error al enviar correos semanales: ${data.detail || 'Error desconocido'}`);
+        }
+    } catch (err) {
+        alert("❌ Error de conexión al enviar correos semanales.");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
     }
 }

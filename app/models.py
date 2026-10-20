@@ -32,6 +32,7 @@ class Cuidador(Base):
     nombre = Column(String(100), nullable=False)
     apellido = Column(String(100), nullable=True, default="")
     telefono_whatsapp = Column(String(25), nullable=False)  # Formato +569XXXXXXXX
+    mail = Column(String(150), nullable=True, default=None)  # Correo electrónico para notificaciones
     rol_trabajo = Column(String(100), default="", nullable=False)  # Campo interno por compatibilidad con esquema previo
     activo = Column(Boolean, default=True, nullable=False)
 

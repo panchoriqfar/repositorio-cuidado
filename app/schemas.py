@@ -51,6 +51,7 @@ class CuidadorBase(BaseModel):
     nombre: str = Field(..., min_length=1, description="Nombre del cuidador/a (obligatorio)")
     apellido: Optional[str] = Field(default="", description="Apellido (opcional)")
     telefono_whatsapp: str = Field(..., pattern=r"^\+569\d{8}$", description="Formato +569XXXXXXXX (obligatorio, exactamente 8 dígitos tras +569)")
+    mail: Optional[str] = Field(default=None, description="Correo electrónico del cuidador/a (opcional)")
     activo: bool = True
 
 class CuidadorCreate(CuidadorBase):
@@ -60,6 +61,7 @@ class CuidadorUpdate(BaseModel):
     nombre: Optional[str] = None
     apellido: Optional[str] = None
     telefono_whatsapp: Optional[str] = Field(default=None, pattern=r"^\+569\d{8}$")
+    mail: Optional[str] = None
     activo: Optional[bool] = None
 
 class CuidadorResponse(BaseModel):
@@ -67,6 +69,7 @@ class CuidadorResponse(BaseModel):
     nombre: str
     apellido: Optional[str] = ""
     telefono_whatsapp: str
+    mail: Optional[str] = None
     rol_trabajo: Optional[str] = None
     activo: bool
 
@@ -184,3 +187,27 @@ class NotificacionDiaResponse(BaseModel):
     enviados: int
     errores: int
     detalles: List[DetalleEnvio]
+
+
+# --- Esquemas de Correo Electrónico (Gmail SMTP) ---
+class NotificacionEmailDiaRequest(BaseModel):
+    fecha: Optional[date] = None
+
+class NotificacionEmailSemanalRequest(BaseModel):
+    fecha_base: Optional[date] = None
+
+class DetalleEnvioEmail(BaseModel):
+    id_cuidador: int
+    cuidador: str
+    mail: Optional[str] = None
+    estado: str  # 'ENVIADO', 'OMITIDO', 'ERROR'
+    detalle: Optional[str] = None
+
+class NotificacionEmailResponse(BaseModel):
+    tipo: str  # 'diario' o 'semanal'
+    periodo: str
+    total_cuidadores: int
+    enviados: int
+    omitidos: int
+    errores: int
+    detalles: List[DetalleEnvioEmail]

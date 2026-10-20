@@ -985,7 +985,8 @@ async function desactivarMedico(idMedico) {
 
 // --- ACCIONES ADMIN: WHATSAPP ---
 function openNotificacionModal() {
-    document.getElementById("notifFecha").value = formatDateIso(new Date());
+    const inputFecha = document.getElementById("notifFecha");
+    if (inputFecha) inputFecha.value = formatDateIso(fechaActual || new Date());
     document.getElementById("notifResultados").classList.add("hidden");
     document.getElementById("notificacionModal").classList.remove("hidden");
 }
@@ -1487,15 +1488,38 @@ async function ejecutarEnvioWhatsAppSemanal() {
 }
 
 
-// --- NOTIFICACIONES POR CORREO ELECTRÓNICO (GMAIL SMTP) ---
+// --- NOTIFICACIONES POR CORREO ELECTRÓNICO (RESEND HTTP API) ---
 
-async function ejecutarEnvioCorreoDiario() {
-    const btn = document.getElementById("btnCorreoDiario");
+function openNotificacionEmailModal() {
+    const inputFecha = document.getElementById("notifEmailFecha");
+    if (inputFecha) inputFecha.value = formatDateIso(fechaActual || new Date());
+    const resDiv = document.getElementById("notifEmailResultados");
+    if (resDiv) resDiv.classList.add("hidden");
+    document.getElementById("notificacionEmailModal").classList.remove("hidden");
+}
+
+function closeNotificacionEmailModal() {
+    document.getElementById("notificacionEmailModal").classList.add("hidden");
+}
+
+function ejecutarEnvioCorreoDiario() {
+    openNotificacionEmailModal();
+}
+
+async function ejecutarEnvioCorreoDiarioDesdeModal() {
     const token = getToken();
     if (!token) { alert("Debes iniciar sesión para enviar notificaciones."); return; }
 
-    const fechaIso = formatDateIso(fechaActual);
-    if (!confirm(`¿Enviar Correo Diario a los cuidadores en turno para la fecha ${fechaIso}?\n\nSe enviará a quienes tengan un correo electrónico válido registrado.`)) return;
+    const inputFecha = document.getElementById("notifEmailFecha");
+    const fecha = inputFecha ? inputFecha.value : formatDateIso(fechaActual);
+    if (!fecha) {
+        alert("Por favor selecciona una fecha.");
+        return;
+    }
+
+    const btn = document.getElementById("btnDispararEmail");
+    const resDiv = document.getElementById("notifEmailResultados");
+    const listaDet = document.getElementById("resEmailDetallesLista");
 
     const origHtml = btn ? btn.innerHTML : "";
     if (btn) {
@@ -1510,21 +1534,51 @@ async function ejecutarEnvioCorreoDiario() {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
             },
-            body: JSON.stringify({ fecha: fechaIso })
+            body: JSON.stringify({ fecha })
         });
         const data = await res.json();
 
         if (res.ok) {
-            let resumen = `📧 Notificación diaria por correo procesada\n\n📅 Fecha: ${data.periodo}\n👥 Cuidadores en turno: ${data.total_cuidadores}\n✉️ Correos enviados: ${data.enviados}\n⚠️ Omitidos (sin correo): ${data.omitidos}\n❌ Errores: ${data.errores}\n`;
-            if (data.detalles && data.detalles.length > 0) {
-                resumen += "\nDetalle:\n";
-                data.detalles.forEach(d => {
-                    resumen += `• ${d.cuidador} [${d.mail || 'Sin correo'}]: ${d.estado}${d.detalle ? ` (${d.detalle})` : ''}\n`;
-                });
-            } else if (data.total_cuidadores === 0) {
-                resumen += "\nNo hay turnos asignados para esta fecha.";
+            document.getElementById("resEmailTotal").textContent = data.total_cuidadores;
+            document.getElementById("resEmailEnviados").textContent = data.enviados;
+            document.getElementById("resEmailOmitidos").textContent = data.omitidos;
+            document.getElementById("resEmailErrores").textContent = data.errores;
+
+            if (!data.detalles || data.detalles.length === 0) {
+                listaDet.innerHTML = `<p class="text-xs text-slate-500 py-3 text-center">No se encontraron asignaciones de cuidadores para el día seleccionado (${fecha}).</p>`;
+            } else {
+                listaDet.innerHTML = data.detalles.map(d => {
+                    let colorEstado = 'text-slate-600 bg-slate-100 border-slate-200';
+                    let iconEstado = 'fa-regular fa-clock';
+                    if (d.estado === 'ENVIADO') {
+                        colorEstado = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+                        iconEstado = 'fa-solid fa-check';
+                    } else if (d.estado === 'OMITIDO') {
+                        colorEstado = 'text-amber-700 bg-amber-50 border-amber-200';
+                        iconEstado = 'fa-solid fa-triangle-exclamation';
+                    } else if (d.estado === 'ERROR') {
+                        colorEstado = 'text-rose-700 bg-rose-50 border-rose-200';
+                        iconEstado = 'fa-solid fa-circle-xmark';
+                    }
+
+                    return `
+                        <div class="p-2.5 rounded-xl border border-slate-200 bg-white space-y-1 text-xs">
+                            <div class="flex items-center justify-between font-bold">
+                                <span>${d.cuidador}</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1 ${colorEstado}">
+                                    <i class="${iconEstado}"></i> ${d.estado}
+                                </span>
+                            </div>
+                            <div class="text-[11px] text-slate-500 font-mono">
+                                <i class="fa-solid fa-envelope text-sky-600 mr-1"></i>${d.mail || 'Sin correo registrado'}
+                            </div>
+                            ${d.detalle ? `<div class="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100">${d.detalle}</div>` : ''}
+                        </div>
+                    `;
+                }).join("");
             }
-            alert(resumen);
+
+            resDiv.classList.remove("hidden");
         } else {
             alert(`❌ Error al enviar correos: ${data.detail || 'Error desconocido'}`);
         }

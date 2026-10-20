@@ -1,6 +1,6 @@
-# Sistema Web de Gestión de Turnos de Cuidadores y Actividades Médicas con WhatsApp y Correo Electrónico
+# Sistema Web de Gestión de Turnos de Cuidadores y Actividades Médicas con WhatsApp y Correo Electrónico (Resend)
 
-Sistema integral de gestión de turnos para centros de atención, clínicas y servicios domiciliarios con notificaciones automatizadas vía WhatsApp (Twilio), correo electrónico (Gmail SMTP) y control de acceso basado en roles (RBAC).
+Sistema integral de gestión de turnos para centros de atención, clínicas y servicios domiciliarios con notificaciones automatizadas vía WhatsApp (Twilio), correo electrónico vía API HTTP (Resend) y control de acceso basado en roles (RBAC).
 
 ---
 
@@ -18,14 +18,11 @@ Sistema integral de gestión de turnos para centros de atención, clínicas y se
 - **Correo Electrónico (`mail`)**: Campo opcional para habilitar el envío de notificaciones por email.
 - **Rol eliminado por completo**: Se eliminó cualquier concepto de rol laboral en los cuidadores; todos son gestionados exclusivamente como cuidadores.
 
-### 3. Notificaciones por Correo Electrónico (Gmail SMTP)
-Módulo completo de notificaciones vía SMTP (Gmail) con soporte multipart (Texto Plano y HTML elegante):
-- **Configuración SMTP**:
-  - `MAIL_SERVER`: `smtp.gmail.com`
-  - `MAIL_PORT`: `587` (STARTTLS)
-  - `MAIL_USERNAME`: `medturnospro@gmail.com`
-  - `MAIL_FROM`: `medturnospro@gmail.com`
-  - `MAIL_FROM_NAME`: `MedTurnos Pro`
+### 3. Notificaciones por Correo Electrónico vía API HTTP (Resend)
+Para garantizar la compatibilidad total con **Render**, Railway u otros entornos en la nube (donde los puertos SMTP salientes 25, 465 y 587 son bloqueados por los proveedores causando errores *Network is unreachable*), el sistema utiliza la **API REST HTTP oficial de Resend** (a través del puerto HTTPS 443 estándar):
+- **Configuración en Render / `.env`**:
+  - `RESEND_API_KEY`: Tu clave de API generada en [resend.com/api-keys](https://resend.com/api-keys).
+  - `RESEND_FROM`: Dirección del remitente (ej. `MedTurnos Pro <onboarding@resend.dev>` o tu dominio verificado).
 - **Envío Semanal ("Enviar Correo Semanal")**:
   - Botón ubicado en la parte inferior derecha del horario, junto al botón de WhatsApp.
   - Recorre los cuidadores con turnos asignados en la semana y envía un resumen estructurado con sus días y bloques asignados, y sus actividades médicas programadas (o indica si no tiene actividades adicionales).
@@ -55,10 +52,10 @@ Módulo completo de notificaciones vía SMTP (Gmail) con soporte multipart (Text
 
 ## 🛠️ Stack Tecnológico
 
-- **Backend**: Python 3.12+, FastAPI, SQLAlchemy ORM, Pydantic v2, Uvicorn, Passlib (Bcrypt), Python-JOSE (JWT), SMTPLib / Email MIME.
+- **Backend**: Python 3.12+, FastAPI, SQLAlchemy ORM, Pydantic v2, Uvicorn, Passlib (Bcrypt), Python-JOSE (JWT), Resend Python SDK (API HTTP).
 - **Base de Datos**: PostgreSQL en la nube (Supabase / Neon / Render) con fallback automático de respaldo a SQLite local (`turnos_medicos.db`).
 - **Frontend**: HTML5, CSS3 con Tailwind CSS (CDN), FontAwesome Icons, JavaScript Vanilla (Fetch API).
-- **Notificaciones**: Twilio WhatsApp API & Gmail SMTP.
+- **Notificaciones**: Twilio WhatsApp API & Resend Email HTTP API.
 
 ---
 
@@ -89,7 +86,7 @@ Módulo completo de notificaciones vía SMTP (Gmail) con soporte multipart (Text
 - `POST /api/admin/notificaciones/enviar-dia`: Dispara actualización diaria por WhatsApp para la fecha indicada.
 - `POST /api/admin/notificaciones/enviar-semana`: Dispara notificación semanal consolidada por WhatsApp a todos los cuidadores de la semana.
 
-### Notificaciones por Correo Electrónico (Gmail SMTP)
+### Notificaciones por Correo Electrónico (Resend HTTP API)
 - `POST /api/admin/notificaciones/enviar-email-dia`: Envía notificación diaria por email con turnos y actividades a cuidadores en turno.
 - `POST /api/admin/notificaciones/enviar-email-semana`: Envía planificación semanal consolidada por email a todos los cuidadores de la semana.
 
@@ -101,11 +98,15 @@ Módulo completo de notificaciones vía SMTP (Gmail) con soporte multipart (Text
    ```powershell
    cd "C:\Users\admin\Desktop\Proyecto cuidado\repositorio cuidado"
    ```
-2. Ejecuta el servidor:
+2. Instala dependencias:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+3. Ejecuta el servidor:
    ```powershell
    python run.py
    ```
-3. Accede desde tu navegador:
+4. Accede desde tu navegador:
    - **Plataforma Web**: [http://localhost:8000](http://localhost:8000)
    - **Documentación Swagger API**: [http://localhost:8000/docs](http://localhost:8000/docs)
 

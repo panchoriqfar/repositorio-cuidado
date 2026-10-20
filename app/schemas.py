@@ -27,21 +27,30 @@ class UsuarioUpdate(BaseModel):
     password: Optional[str] = None
     rol: Optional[str] = None
 
+class CambiarPasswordRequest(BaseModel):
+    password_actual: str
+    password_nueva: str
+
 class UsuarioResponse(BaseModel):
     id_usuario: int
     username: str
     rol: str
+    must_change_password: bool = False
 
     class Config:
         from_attributes = True
 
 
+# --- Esquema para envío WhatsApp semanal ---
+class NotificacionSemanalRequest(BaseModel):
+    fecha_base: Optional[date] = None  # Si None, usa la semana actual
+
+
 # --- Esquemas de Cuidadores (Exclusivos para Turnos) ---
 class CuidadorBase(BaseModel):
-    nombre: str
-    apellido: str
-    telefono_whatsapp: str = Field(..., description="Formato E.164, ej: +56912345678")
-    rol_trabajo: str = "Cuidador"
+    nombre: str = Field(..., description="Nombre del cuidador/a (obligatorio)")
+    apellido: Optional[str] = Field(default="", description="Apellido (opcional)")
+    telefono_whatsapp: str = Field(..., description="Formato E.164, ej: +56912345678 (obligatorio)")
     activo: bool = True
 
 class CuidadorCreate(CuidadorBase):
@@ -51,11 +60,15 @@ class CuidadorUpdate(BaseModel):
     nombre: Optional[str] = None
     apellido: Optional[str] = None
     telefono_whatsapp: Optional[str] = None
-    rol_trabajo: Optional[str] = None
     activo: Optional[bool] = None
 
-class CuidadorResponse(CuidadorBase):
+class CuidadorResponse(BaseModel):
     id_cuidador: int
+    nombre: str
+    apellido: Optional[str] = ""
+    telefono_whatsapp: str
+    rol_trabajo: Optional[str] = ""
+    activo: bool
 
     class Config:
         from_attributes = True

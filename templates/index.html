@@ -67,9 +67,8 @@
                     </button>
                     <button onclick="openNotificacionModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
-                        <span class="hidden sm:inline">WhatsApp Hoy</span>
-                    </button>
-                    <button onclick="logoutAdmin()" class="px-2 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Cerrar Sesión">
+                        <span class="hidden sm:inline">Actualización Diaria</span>
+                    </button>                    <button onclick="logoutAdmin()" class="px-2 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Cerrar Sesión">
                         <i class="fa-solid fa-arrow-right-from-bracket"></i>
                     </button>
                 </div>
@@ -148,6 +147,15 @@
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            <!-- Botón WhatsApp Semanal: abajo a la derecha del horario -->
+            <div id="barraWhatsappSemanal" class="hidden border-t border-slate-100 bg-slate-50 px-4 py-3 flex items-center justify-end gap-3">
+                <span class="text-xs text-slate-500"><i class="fa-brands fa-whatsapp text-emerald-600 mr-1"></i>Notificar a todos los cuidadores de la semana (con actividades incluidas)</span>
+                <button onclick="ejecutarEnvioWhatsAppSemanal()" id="btnWhatsAppSemanal"
+                    class="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-2">
+                    <i class="fa-brands fa-whatsapp"></i>
+                    <span>Enviar a toda la semana</span>
+                </button>
             </div>
         </div>
 
@@ -356,10 +364,24 @@
             <form id="nuevoCuidadorForm" onsubmit="handleCrearCuidador(event)" class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Registrar Nuevo/a Cuidador/a</h4>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input type="text" id="cuidNombre" required placeholder="Nombre" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
-                    <input type="text" id="cuidApellido" required placeholder="Apellido" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
-                    <input type="text" id="cuidTelefono" required placeholder="WhatsApp (+56912345678)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
-                    <input type="text" id="cuidRol" required placeholder="Rol (Ej: Cuidador Diurno, TENS)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nombre <span class="text-rose-500">*</span></label>
+                        <input type="text" id="cuidNombre" required placeholder="Ej: Rosa" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Apellido <span class="text-slate-400 font-normal">(opcional)</span></label>
+                        <input type="text" id="cuidApellido" placeholder="Ej: Morales" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">WhatsApp <span class="text-rose-500">*</span></label>
+                        <div class="flex items-center gap-2">
+                            <span class="px-3 py-2 text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg whitespace-nowrap">+569</span>
+                            <input type="text" id="cuidTelefonoNumeros" required maxlength="8" placeholder="12345678 (8 dígitos)" pattern="\d{8}"
+                                class="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                oninput="this.value=this.value.replace(/\D/g,'').slice(0,8)">
+                        </div>
+                        <p id="cuidTelefonoError" class="text-[10px] text-rose-500 mt-1 hidden">Debes ingresar exactamente 8 dígitos numéricos</p>
+                    </div>
                 </div>
                 <div class="text-right">
                     <button type="submit" class="px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-lg shadow-sm">
@@ -515,7 +537,59 @@
         </div>
     </div>
 
+    <!-- 8. MODAL CAMBIO DE CONTRASEÑA (Primer login obligatorio + acceso voluntario) -->
+    <div id="cambiarPasswordModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-amber-600">
+                    <i class="fa-solid fa-key text-xl"></i>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-lg leading-snug" id="cambiarPasswordTitulo">Cambiar Contraseña</h3>
+                        <p class="text-xs text-slate-500" id="cambiarPasswordSubtitulo">Actualiza tu contraseña de acceso</p>
+                    </div>
+                </div>
+                <button id="btnCerrarCambiarPassword" onclick="closeCambiarPasswordModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <!-- Aviso primer login -->
+            <div id="avisoPrimerLogin" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
+                <i class="fa-solid fa-triangle-exclamation mt-0.5 flex-shrink-0"></i>
+                <span>Es tu <strong>primer acceso</strong>. Debes cambiar tu contraseña antes de continuar usando el sistema.</span>
+            </div>
+
+            <form id="cambiarPasswordForm" onsubmit="handleCambiarPassword(event)" class="space-y-4">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Contraseña Actual</label>
+                    <input type="password" id="cpPasswordActual" required placeholder="Ingresa tu contraseña actual"
+                        class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-400">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nueva Contraseña</label>
+                    <input type="password" id="cpPasswordNueva" required placeholder="Mínimo 4 caracteres"
+                        class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-400">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Confirmar Nueva Contraseña</label>
+                    <input type="password" id="cpPasswordConfirm" required placeholder="Repite la nueva contraseña"
+                        class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-400">
+                </div>
+                <div id="cpMsgDiv" class="text-xs hidden font-medium p-2 rounded-lg"></div>
+                <div class="flex gap-2 justify-end pt-1">
+                    <button type="button" id="btnCancelarCambiarPassword" onclick="closeCambiarPasswordModal()"
+                        class="px-4 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" id="btnGuardarPassword"
+                        class="px-5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Guardar Contraseña</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- SCRIPT PRINCIPAL CON CACHE-BUSTING -->
-    <script src="/static/js/app.js?v=2.3"></script>
+    <script src="/static/js/app.js?v=3.0"></script>
 </body>
 </html>

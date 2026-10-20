@@ -245,6 +245,34 @@ def get_mi_perfil(current_user: Usuario = Depends(auth.get_current_user)):
     return current_user
 
 
+# --- CAMBIO DE CONTRASEÑA (Disponible para cualquier usuario autenticado) ---
+@app.post("/api/auth/cambiar-password")
+def cambiar_password(
+    datos: schemas.CambiarPasswordRequest,
+    current_user: Usuario = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Permite a cualquier usuario autenticado cambiar su propia contraseña.
+    Si must_change_password=True, es obligatorio antes de continuar.
+    """
+    if not auth.verify_password(datos.password_actual, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña actual es incorrecta"
+        )
+    nueva = datos.password_nueva.strip()
+    if len(nueva) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña debe tener al menos 4 caracteres"
+        )
+    current_user.password_hash = auth.get_password_hash(nueva)
+    current_user.must_change_password = False
+    db.commit()
+    return {"message": "Contraseña actualizada exitosamente"}
+
+
 # --- GESTIÓN DE USUARIOS Y ROLES (RBAC EXCLUSIVO SUPER_USER) ---
 @app.get("/api/admin/usuarios", response_model=List[schemas.UsuarioResponse])
 def listar_usuarios(
@@ -289,7 +317,8 @@ def crear_usuario(
     nuevo_usuario = Usuario(
         username=username_limpio,
         password_hash=auth.get_password_hash(datos.password.strip()),
-        rol=rol_solicitado
+        rol=rol_solicitado,
+        must_change_password=True  # El usuario DEBE cambiar su contraseña en el primer login
     )
     db.add(nuevo_usuario)
     db.commit()
@@ -360,7 +389,21 @@ def crear_cuidador(
     current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
-    nuevo = Cuidador(**datos.model_dump())
+    import re
+    # Validar formato WhatsApp: debe ser +569 seguido de exactamente 8 dígitos
+    patron_wa = re.compile(r"^\+569\d{8}$")
+    if not patron_wa.match(datos.telefono_whatsapp):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El número de WhatsApp debe tener el formato +569XXXXXXXX (8 dígitos después de +569)"
+        )
+    nuevo = Cuidador(
+        nombre=datos.nombre.strip(),
+        apellido=(datos.apellido or "").strip(),
+        telefono_whatsapp=datos.telefono_whatsapp.strip(),
+        rol_trabajo="Cuidador",
+        activo=True
+    )
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
@@ -691,3 +734,42 @@ def enviar_notificaciones_del_dia(
     target_date = payload.fecha or date.today()
     resultado = whatsapp.enviar_notificaciones_del_dia(target_date, db)
     return resultado
+
+
+# --- NOTIFICACIONES WHATSAPP SEMANA COMPLETA ---
+@app.post("/api/admin/notificaciones/enviar-semana")
+def enviar_notificaciones_semana(
+    payload: schemas.NotificacionSemanalRequest,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Envía WhatsApp a TODOS los cuidadores de toda la semana (lunes a domingo),
+    incluyendo sus actividades médicas del día correspondiente.
+    """
+    fecha_base = payload.fecha_base or date.today()
+    inicio_semana = fecha_base - timedelta(days=fecha_base.weekday())
+
+    resultados_semana = []
+    total_enviados = 0
+    total_errores = 0
+
+    for i in range(7):
+        dia = inicio_semana + timedelta(days=i)
+        resultado_dia = whatsapp.enviar_notificaciones_del_dia(dia, db)
+        resultados_semana.append({
+            "fecha": dia.isoformat(),
+            "total": resultado_dia["total_asignaciones"],
+            "enviados": resultado_dia["enviados"],
+            "errores": resultado_dia["errores"],
+        })
+        total_enviados += resultado_dia["enviados"]
+        total_errores += resultado_dia["errores"]
+
+    return {
+        "semana_inicio": inicio_semana.isoformat(),
+        "semana_fin": (inicio_semana + timedelta(days=6)).isoformat(),
+        "total_enviados": total_enviados,
+        "total_errores": total_errores,
+        "detalle_por_dia": resultados_semana
+    }

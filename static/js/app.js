@@ -88,6 +88,13 @@ async function checkAuth() {
             btnNuevaActividad.classList.remove("hidden");
             btnNuevaActividad.classList.add("inline-flex");
 
+            // Mostrar botón WhatsApp semanal para usuarios autenticados
+            const barraWhatsappSemanal = document.getElementById("barraWhatsappSemanal");
+            if (barraWhatsappSemanal) {
+                barraWhatsappSemanal.classList.remove("hidden");
+                barraWhatsappSemanal.classList.add("flex");
+            }
+
             // Visibilidad exclusiva de botones de usuarios: Solo Super Admin
             const btnNavUsuarios = document.getElementById("btnNavUsuarios");
             if (esSuper) {
@@ -117,6 +124,12 @@ async function checkAuth() {
             }
 
             loginBtn.classList.add("hidden");
+
+            // Verificar si el usuario debe cambiar su contraseña (primer login)
+            if (user.must_change_password) {
+                openCambiarPasswordModal(true);
+            }
+
             return true;
         } else {
             currentUserProfile = null;
@@ -801,9 +814,26 @@ async function handleCrearCuidador(e) {
     e.preventDefault();
     const token = getToken();
     const nombre = document.getElementById("cuidNombre").value.trim();
-    const apellido = document.getElementById("cuidApellido").value.trim();
-    const telefono_whatsapp = document.getElementById("cuidTelefono").value.trim();
-    const rol_trabajo = document.getElementById("cuidRol").value.trim();
+    const apellido = (document.getElementById("cuidApellido")?.value || "").trim();
+    const numerosInput = document.getElementById("cuidTelefonoNumeros");
+    const numeros = numerosInput ? numerosInput.value.trim() : "";
+    const errorTel = document.getElementById("cuidTelefonoError");
+
+    // Validar nombre
+    if (!nombre) {
+        alert("El nombre del cuidador/a es obligatorio.");
+        return;
+    }
+
+    // Validar exactamente 8 dígitos numéricos
+    if (!/^\d{8}$/.test(numeros)) {
+        if (errorTel) errorTel.classList.remove("hidden");
+        numerosInput?.focus();
+        return;
+    }
+    if (errorTel) errorTel.classList.add("hidden");
+
+    const telefono_whatsapp = "+569" + numeros;
 
     try {
         const res = await fetch("/api/admin/cuidadores", {
@@ -812,7 +842,7 @@ async function handleCrearCuidador(e) {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
             },
-            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, rol_trabajo, activo: true })
+            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, activo: true })
         });
         if (res.ok) {
             document.getElementById("nuevoCuidadorForm").reset();
@@ -1285,5 +1315,159 @@ async function eliminarUsuario(idUsuario, username) {
         }
     } catch (e) {
         alert("Error de conexión");
+    }
+}
+
+
+// --- CAMBIO DE CONTRASEÑA ---
+
+function openCambiarPasswordModal(esPrimerLogin = false) {
+    const modal = document.getElementById("cambiarPasswordModal");
+    const titulo = document.getElementById("cambiarPasswordTitulo");
+    const subtitulo = document.getElementById("cambiarPasswordSubtitulo");
+    const avisoPrimer = document.getElementById("avisoPrimerLogin");
+    const btnCancelar = document.getElementById("btnCancelarCambiarPassword");
+    const btnCerrar = document.getElementById("btnCerrarCambiarPassword");
+
+    if (esPrimerLogin) {
+        titulo.textContent = "Cambio de Contraseña Obligatorio";
+        subtitulo.textContent = "Debes establecer una nueva contraseña antes de continuar";
+        avisoPrimer.classList.remove("hidden");
+        // En primer login no se puede cerrar el modal sin cambiar la contraseña
+        btnCancelar.classList.add("hidden");
+        btnCerrar.classList.add("hidden");
+    } else {
+        titulo.textContent = "Cambiar Contraseña";
+        subtitulo.textContent = "Actualiza tu contraseña de acceso";
+        avisoPrimer.classList.add("hidden");
+        btnCancelar.classList.remove("hidden");
+        btnCerrar.classList.remove("hidden");
+    }
+
+    document.getElementById("cambiarPasswordForm").reset();
+    const msgDiv = document.getElementById("cpMsgDiv");
+    if (msgDiv) msgDiv.className = "text-xs hidden font-medium p-2 rounded-lg";
+
+    modal.classList.remove("hidden");
+}
+
+function closeCambiarPasswordModal() {
+    // Solo se puede cerrar si NOT primer login
+    if (currentUserProfile && currentUserProfile.must_change_password) {
+        alert("⚠️ Debes cambiar tu contraseña antes de continuar.");
+        return;
+    }
+    document.getElementById("cambiarPasswordModal").classList.add("hidden");
+}
+
+async function handleCambiarPassword(e) {
+    e.preventDefault();
+    const token = getToken();
+    if (!token) { alert("Sesión expirada. Inicia sesión nuevamente."); return; }
+
+    const actual = document.getElementById("cpPasswordActual").value;
+    const nueva = document.getElementById("cpPasswordNueva").value.trim();
+    const confirmar = document.getElementById("cpPasswordConfirm").value.trim();
+    const msgDiv = document.getElementById("cpMsgDiv");
+    const btnGuardar = document.getElementById("btnGuardarPassword");
+
+    if (!actual || !nueva || !confirmar) {
+        alert("Por favor completa todos los campos.");
+        return;
+    }
+    if (nueva.length < 4) {
+        alert("La nueva contraseña debe tener al menos 4 caracteres.");
+        return;
+    }
+    if (nueva !== confirmar) {
+        alert("❌ La nueva contraseña y la confirmación no coinciden.");
+        return;
+    }
+
+    const origHtml = btnGuardar.innerHTML;
+    btnGuardar.disabled = true;
+    btnGuardar.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando...`;
+    if (msgDiv) msgDiv.className = "text-xs hidden font-medium p-2 rounded-lg";
+
+    try {
+        const res = await fetch("/api/auth/cambiar-password", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ password_actual: actual, password_nueva: nueva })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            if (msgDiv) {
+                msgDiv.className = "text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold block p-2 rounded-lg";
+                msgDiv.textContent = "✅ Contraseña actualizada exitosamente.";
+            }
+            // Actualizar perfil local y cerrar modal
+            if (currentUserProfile) currentUserProfile.must_change_password = false;
+            setTimeout(() => {
+                document.getElementById("cambiarPasswordModal").classList.add("hidden");
+                alert("✅ Contraseña cambiada exitosamente. Por seguridad, inicia sesión nuevamente.");
+                logoutAdmin();
+            }, 800);
+        } else {
+            const errorMsg = data.detail || "Error al cambiar la contraseña";
+            alert(`❌ ${errorMsg}`);
+            if (msgDiv) {
+                msgDiv.className = "text-xs bg-rose-50 text-rose-800 border border-rose-200 font-semibold block p-2 rounded-lg";
+                msgDiv.textContent = `❌ ${errorMsg}`;
+            }
+        }
+    } catch (err) {
+        alert("❌ Error de conexión con el servidor.");
+    } finally {
+        btnGuardar.disabled = false;
+        btnGuardar.innerHTML = origHtml;
+    }
+}
+
+
+// --- WHATSAPP SEMANAL (Todos los cuidadores de la semana) ---
+
+async function ejecutarEnvioWhatsAppSemanal() {
+    const btn = document.getElementById("btnWhatsAppSemanal");
+    const token = getToken();
+    if (!token) { alert("Debes iniciar sesión para enviar notificaciones."); return; }
+
+    if (!confirm("¿Enviar WhatsApp a TODOS los cuidadores de la semana completa?\n\nCada cuidador recibirá su turno y las actividades médicas del día correspondiente.")) return;
+
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enviando a toda la semana...`;
+
+    try {
+        const res = await fetch("/api/admin/notificaciones/enviar-semana", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ fecha_base: fechaActual.toISOString().split("T")[0] })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            let resumen = `✅ WhatsApp semanal enviado\n\n📅 Semana: ${data.semana_inicio} → ${data.semana_fin}\n✉️ Enviados: ${data.total_enviados}\n❌ Errores: ${data.total_errores}\n\nDetalle por día:\n`;
+            (data.detalle_por_dia || []).forEach(d => {
+                resumen += `• ${d.fecha}: ${d.enviados}/${d.total} enviados${d.errores > 0 ? ` (${d.errores} errores)` : ''}\n`;
+            });
+            alert(resumen);
+            await cargarCuadrante();
+        } else {
+            const err = data.detail || "Error al enviar notificaciones semanales";
+            alert(`❌ ${err}`);
+        }
+    } catch (err) {
+        alert("❌ Error de conexión al enviar WhatsApp semanal.");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
     }
 }

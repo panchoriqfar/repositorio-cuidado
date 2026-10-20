@@ -3,12 +3,17 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 class Usuario(Base):
+    """
+    Tabla de Usuarios del Sistema con soporte de Roles (RBAC):
+    - 'super_user': Acceso total, gestión de usuarios, orquestación y eliminación de cuidadores.
+    - 'admin': Mismos permisos operativos excepto eliminación de cuidadores y asignación de rol super_user.
+    """
     __tablename__ = "usuarios"
 
     id_usuario = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
-    rol = Column(String(20), default="ADMIN", nullable=False)
+    rol = Column(String(20), default="admin", nullable=False) # 'super_user', 'admin'
 
 
 class Cuidador(Base):

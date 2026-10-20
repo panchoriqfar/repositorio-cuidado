@@ -8,6 +8,7 @@ let cuadranteData = null;
 let listaCuidadoresCache = [];
 let listaMedicosCache = [];
 let listaBloquesCache = [];
+let currentUserProfile = null;
 
 // Inicialización
 document.addEventListener("DOMContentLoaded", async () => {
@@ -41,6 +42,7 @@ async function checkAuth() {
     const btnNuevaActividad = document.getElementById("btnNuevaActividad");
 
     if (!token) {
+        currentUserProfile = null;
         adminBadge.classList.add("hidden");
         adminBadge.classList.remove("flex");
         adminQuickActions.classList.add("hidden");
@@ -59,7 +61,17 @@ async function checkAuth() {
         });
         if (res.ok) {
             const user = await res.json();
-            adminUsername.textContent = `${user.username} (${user.rol})`;
+            currentUserProfile = user;
+            const esSuper = (user.rol || "").toLowerCase() === "super_user";
+            adminUsername.innerHTML = `
+                <span class="flex items-center gap-1.5">
+                    <i class="fa-solid ${esSuper ? 'fa-crown text-amber-500' : 'fa-shield text-blue-500'}"></i>
+                    <span>${user.username}</span>
+                    <span class="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full ${esSuper ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}">
+                        ${esSuper ? 'super_user' : 'admin'}
+                    </span>
+                </span>
+            `;
             adminBadge.classList.remove("hidden");
             adminBadge.classList.add("flex");
             adminQuickActions.classList.remove("hidden");
@@ -71,11 +83,13 @@ async function checkAuth() {
             loginBtn.classList.add("hidden");
             return true;
         } else {
+            currentUserProfile = null;
             removeToken();
             return checkAuth();
         }
     } catch (e) {
         console.error("Error verificando sesión:", e);
+        currentUserProfile = null;
         return false;
     }
 }
@@ -721,6 +735,8 @@ function renderizarListaCuidadoresModal() {
         return;
     }
 
+    const esSuper = currentUserProfile && (currentUserProfile.rol || "").toLowerCase() === "super_user";
+
     cont.innerHTML = listaCuidadoresCache.map(c => `
         <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white">
             <div>
@@ -731,11 +747,15 @@ function renderizarListaCuidadoresModal() {
                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${c.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
                     ${c.activo ? 'Activo' : 'Inactivo'}
                 </span>
-                ${c.activo ? `
-                    <button onclick="desactivarCuidador(${c.id_cuidador})" title="Desactivar" class="text-xs text-rose-500 hover:text-rose-700 p-1">
+                ${c.activo ? (esSuper ? `
+                    <button onclick="desactivarCuidador(${c.id_cuidador})" title="Desactivar cuidador (super_user)" class="text-xs text-rose-500 hover:text-rose-700 p-1 transition-colors">
                         <i class="fa-solid fa-user-xmark"></i>
                     </button>
-                ` : ''}
+                ` : `
+                    <span title="Restricción: Solo super_user tiene permitido eliminar cuidadores" class="text-xs text-slate-300 p-1 cursor-not-allowed">
+                        <i class="fa-solid fa-lock text-slate-400"></i>
+                    </span>
+                `) : ''}
             </div>
         </div>
     `).join("");
@@ -773,7 +793,13 @@ async function handleCrearCuidador(e) {
 }
 
 async function desactivarCuidador(idCuidador) {
-    if (!confirm("¿Desactivar este cuidador?")) return;
+    const esSuper = currentUserProfile && (currentUserProfile.rol || "").toLowerCase() === "super_user";
+    if (!esSuper) {
+        alert("Restricción RBAC: Únicamente los usuarios con rol 'super_user' tienen autorización para eliminar o desactivar cuidadores.");
+        return;
+    }
+
+    if (!confirm("¿Deseas desactivar a este cuidador?")) return;
     const token = getToken();
     try {
         const res = await fetch(`/api/admin/cuidadores/${idCuidador}`, {
@@ -784,6 +810,9 @@ async function desactivarCuidador(idCuidador) {
             await cargarDatosIniciales();
             renderizarListaCuidadoresModal();
             cargarCuadrante();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "No se pudo desactivar el cuidador");
         }
     } catch (e) {
         alert("Error de conexión");
@@ -954,4 +983,184 @@ function openLoginModal() {
 
 function closeLoginModal() {
     document.getElementById("loginModal").classList.add("hidden");
+}
+
+
+// --- ACCIONES ADMIN: GESTIÓN DE USUARIOS Y ROLES (RBAC) ---
+async function openUsuariosModal() {
+    document.getElementById("usuariosModal").classList.remove("hidden");
+    actualizarInfoSesionUsuariosModal();
+    await cargarUsuariosModal();
+}
+
+function closeUsuariosModal() {
+    document.getElementById("usuariosModal").classList.add("hidden");
+    document.getElementById("nuevoUsuarioForm").reset();
+    const msgDiv = document.getElementById("usuarioFormMsg");
+    if (msgDiv) {
+        msgDiv.className = "text-xs hidden font-medium";
+        msgDiv.textContent = "";
+    }
+}
+
+function actualizarInfoSesionUsuariosModal() {
+    const sesionNombre = document.getElementById("usrSesionNombre");
+    const sesionBadge = document.getElementById("usrSesionBadge");
+    const optSuperUser = document.getElementById("optSuperUser");
+    const avisoJerarquia = document.getElementById("avisoJerarquiaRol");
+
+    if (!currentUserProfile) return;
+
+    const esSuper = (currentUserProfile.rol || "").toLowerCase() === "super_user";
+    if (sesionNombre) sesionNombre.textContent = currentUserProfile.username;
+
+    if (sesionBadge) {
+        if (esSuper) {
+            sesionBadge.innerHTML = `
+                <span class="inline-flex items-center gap-1 bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold">
+                    <i class="fa-solid fa-crown text-amber-500"></i> super_user (Control Total)
+                </span>
+            `;
+        } else {
+            sesionBadge.innerHTML = `
+                <span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-0.5 rounded-full font-bold">
+                    <i class="fa-solid fa-shield text-blue-500"></i> admin (Operativo)
+                </span>
+            `;
+        }
+    }
+
+    if (optSuperUser) {
+        if (esSuper) {
+            optSuperUser.disabled = false;
+            optSuperUser.hidden = false;
+            optSuperUser.textContent = "Superusuario (super_user)";
+            if (avisoJerarquia) avisoJerarquia.classList.add("hidden");
+        } else {
+            optSuperUser.disabled = true;
+            optSuperUser.hidden = true;
+            document.getElementById("usrRol").value = "admin";
+            if (avisoJerarquia) avisoJerarquia.classList.remove("hidden");
+        }
+    }
+}
+
+async function cargarUsuariosModal() {
+    const cont = document.getElementById("listaUsuarios");
+    const token = getToken();
+    cont.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Cargando usuarios...</p>`;
+
+    try {
+        const res = await fetch("/api/admin/usuarios", {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            cont.innerHTML = `<p class="text-xs text-rose-500 py-3 text-center">No autorizado o error al consultar usuarios.</p>`;
+            return;
+        }
+        const usuarios = await res.json();
+        if (usuarios.length === 0) {
+            cont.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">No hay usuarios registrados.</p>`;
+            return;
+        }
+
+        const esSuper = currentUserProfile && (currentUserProfile.rol || "").toLowerCase() === "super_user";
+
+        cont.innerHTML = usuarios.map(u => {
+            const uEsSuper = (u.rol || "").toLowerCase() === "super_user";
+            const esMismo = currentUserProfile && u.id_usuario === currentUserProfile.id_usuario;
+
+            return `
+                <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-lg ${uEsSuper ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'} flex items-center justify-center font-bold text-xs">
+                            <i class="fa-solid ${uEsSuper ? 'fa-crown text-amber-500' : 'fa-shield'}"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span>${u.username}</span>
+                                ${esMismo ? '<span class="text-[10px] text-slate-400 font-normal">(Tu cuenta)</span>' : ''}
+                            </div>
+                            <div class="text-[11px] text-slate-500">ID #${u.id_usuario}</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-3">
+                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${uEsSuper ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}">
+                            <i class="fa-solid ${uEsSuper ? 'fa-crown text-amber-500' : 'fa-shield text-blue-500'} text-[10px]"></i>
+                            ${u.rol}
+                        </span>
+
+                        ${(esSuper && !esMismo) ? `
+                            <button onclick="eliminarUsuario(${u.id_usuario}, '${u.username}')" title="Eliminar usuario" class="text-xs text-rose-500 hover:text-rose-700 p-1 transition-colors">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+    } catch (e) {
+        cont.innerHTML = `<p class="text-xs text-rose-500 py-3 text-center">Error de red al consultar usuarios.</p>`;
+    }
+}
+
+async function handleCrearUsuario(e) {
+    e.preventDefault();
+    const token = getToken();
+    const username = document.getElementById("usrUsername").value.trim();
+    const password = document.getElementById("usrPassword").value.trim();
+    const rol = document.getElementById("usrRol").value;
+    const msgDiv = document.getElementById("usuarioFormMsg");
+
+    msgDiv.className = "text-xs hidden font-medium";
+    msgDiv.textContent = "";
+
+    try {
+        const res = await fetch("/api/admin/usuarios", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ username, password, rol })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            msgDiv.className = "text-xs text-emerald-600 font-semibold block";
+            msgDiv.textContent = `¡Usuario '${data.username}' creado exitosamente con rol '${data.rol}'!`;
+            document.getElementById("nuevoUsuarioForm").reset();
+            actualizarInfoSesionUsuariosModal();
+            await cargarUsuariosModal();
+            setTimeout(() => {
+                msgDiv.className = "text-xs hidden font-medium";
+            }, 4000);
+        } else {
+            msgDiv.className = "text-xs text-rose-600 font-semibold block";
+            msgDiv.textContent = data.detail || "Error al crear usuario";
+        }
+    } catch (err) {
+        msgDiv.className = "text-xs text-rose-600 font-semibold block";
+        msgDiv.textContent = "Error de conexión con el servidor";
+    }
+}
+
+async function eliminarUsuario(idUsuario, username) {
+    if (!confirm(`¿Eliminar definitivamente al usuario '${username}'?`)) return;
+    const token = getToken();
+    try {
+        const res = await fetch(`/api/admin/usuarios/${idUsuario}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok) {
+            await cargarUsuariosModal();
+        } else {
+            alert(data.detail || "Error al eliminar usuario");
+        }
+    } catch (e) {
+        alert("Error de conexión");
+    }
 }

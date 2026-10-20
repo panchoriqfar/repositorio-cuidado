@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import date, time, datetime
 
-# --- Esquemas de Usuario y Autenticación ---
+# --- Esquemas de Usuario y Autenticación (RBAC) ---
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -20,7 +20,12 @@ class TokenData(BaseModel):
 class UsuarioCreate(BaseModel):
     username: str
     password: str
-    rol: str = "ADMIN"
+    rol: str = Field(default="admin", description="Rol del usuario: 'super_user' o 'admin'")
+
+class UsuarioUpdate(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    rol: Optional[str] = None
 
 class UsuarioResponse(BaseModel):
     id_usuario: int

@@ -8,19 +8,20 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
+
 from app.database import engine, Base, get_db
 from app.models import Usuario, Cuidador, PersonalMedico, BloqueTurno, AsignacionTurno, ActividadMedica
 from app import schemas, auth, whatsapp
 
 load_dotenv()
 
-# Crear tablas en la base de datos
+# Crear tablas en la base de datos (PostgreSQL/Supabase o SQLite de respaldo)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Sistema de Gestión de Turnos de Cuidadores y Actividades Médicas",
-    description="API con separación estricta entre Cuidadores (turnos) y Personal Médico (actividades)",
-    version="2.0.0"
+    description="API con Control de Acceso Basado en Roles (RBAC: super_user y admin), Gestión de Turnos y Actividades Médicas",
+    version="2.1.0"
 )
 
 # CORS
@@ -55,39 +56,44 @@ def calcular_bloque_por_horario(hora_inicio: time, db: Session) -> BloqueTurno:
     - Nocturno (N): 21:00 a 05:59
     """
     bloques = {b.codigo_bloque: b for b in db.query(BloqueTurno).all()}
-
     minutos = hora_inicio.hour * 60 + hora_inicio.minute
 
-    # 06:00 (360) a 14:29 (869) -> AM
     if 360 <= minutos < 870:
         return bloques.get("AM") or list(bloques.values())[0]
-    # 14:30 (870) a 17:59 (1079) -> PM1
     elif 870 <= minutos < 1080:
         return bloques.get("PM1") or list(bloques.values())[0]
-    # 18:00 (1080) a 20:59 (1259) -> PM2
     elif 1080 <= minutos < 1260:
         return bloques.get("PM2") or list(bloques.values())[0]
-    # Resto (21:00 a 05:59) -> Nocturno (N)
     else:
         return bloques.get("N") or list(bloques.values())[0]
 
 
-# --- EVENTO DE INICIALIZACIÓN (SEED DE DATOS) ---
+# --- EVENTO DE INICIALIZACIÓN (SEED / ARRANQUE) ---
 @app.on_event("startup")
 def startup_seed_data():
     db = next(get_db())
     try:
-        # 1. Administrador inicial si no existe
-        if db.query(Usuario).count() == 0:
-            default_user = os.getenv("ADMIN_DEFAULT_USERNAME", "admin")
-            default_pass = os.getenv("ADMIN_DEFAULT_PASSWORD", "admin1234")
-            admin_user = Usuario(
-                username=default_user,
-                password_hash=auth.get_password_hash(default_pass),
-                rol="ADMIN"
+        # 1. Superusuario Inicial (Seed / Script de arranque con passlib)
+        superuser_user = os.getenv("SUPERUSER_USERNAME") or os.getenv("ADMIN_DEFAULT_USERNAME") or "admin"
+        superuser_pass = os.getenv("SUPERUSER_PASSWORD") or os.getenv("ADMIN_DEFAULT_PASSWORD") or "admin1234"
+
+        # Verificar si existe algún superusuario o usuario
+        usuarios_count = db.query(Usuario).count()
+        if usuarios_count == 0:
+            super_user = Usuario(
+                username=superuser_user,
+                password_hash=auth.get_password_hash(superuser_pass),
+                rol="super_user"
             )
-            db.add(admin_user)
+            db.add(super_user)
             db.commit()
+        else:
+            # Migración suave: si hay usuarios con rol antiguo 'ADMIN', normalizar a 'super_user'
+            admins_viejos = db.query(Usuario).filter(Usuario.rol == "ADMIN").all()
+            for u in admins_viejos:
+                u.rol = "super_user"
+            if admins_viejos:
+                db.commit()
 
         # 2. Bloques visuales para el cuadrante del front: AM, PM1, PM2, Nocturno
         bloques_default = [
@@ -102,11 +108,10 @@ def startup_seed_data():
             if not existe:
                 db.add(BloqueTurno(**b_data))
             else:
-                # Asegurar nombre exacto solicitado en el prompt
                 existe.nombre_bloque = b_data["nombre_bloque"]
         db.commit()
 
-        # 3. Cuidadores de prueba (A quienes se les asignan turnos)
+        # 3. Cuidadores de prueba
         if db.query(Cuidador).count() == 0:
             cuidadores_ejemplo = [
                 Cuidador(nombre="Rosa", apellido="Morales", telefono_whatsapp="+56911223344", rol_trabajo="Cuidadora Diurna", activo=True),
@@ -117,7 +122,7 @@ def startup_seed_data():
             db.add_all(cuidadores_ejemplo)
             db.commit()
 
-        # 4. Personal Médico de prueba (A quienes se les pueden o no asignar actividades del día)
+        # 4. Personal Médico de prueba
         if db.query(PersonalMedico).count() == 0:
             medicos_ejemplo = [
                 PersonalMedico(nombre="Dra. Andrea", apellido="Silva", telefono_whatsapp="+56955667788", especialidad="Médico General", activo=True),
@@ -139,7 +144,6 @@ def startup_seed_data():
 
             for i in range(7):
                 dia = inicio_semana + timedelta(days=i)
-                # Asignar turno AM con horario asignado
                 db.add(AsignacionTurno(
                     fecha=dia,
                     id_cuidador=cuidadores[i % len(cuidadores)].id_cuidador,
@@ -148,7 +152,6 @@ def startup_seed_data():
                     id_bloque=bloque_am.id_bloque,
                     estado_notificacion="PENDIENTE"
                 ))
-                # Asignar turno Nocturno con horario asignado
                 db.add(AsignacionTurno(
                     fecha=dia,
                     id_cuidador=cuidadores[(i + 1) % len(cuidadores)].id_cuidador,
@@ -171,21 +174,21 @@ def startup_seed_data():
                     hora=time(11, 30),
                     titulo="Visita Domiciliaria Control Crónico",
                     descripcion="Control de presión arterial, glucemia y ajuste farmacológico.",
-                    id_medico=medicos[0].id_medico # Con médico asignado
+                    id_medico=medicos[0].id_medico
                 ),
                 ActividadMedica(
                     fecha=inicio_semana + timedelta(days=3),
                     hora=time(15, 0),
                     titulo="Curación Avanzada de Escara",
                     descripcion="Limpieza quirúrgica superficial y aplicación de apósito hidrocoloide.",
-                    id_medico=medicos[1].id_medico # Con enfermero asignado
+                    id_medico=medicos[1].id_medico
                 ),
                 ActividadMedica(
                     fecha=inicio_semana + timedelta(days=4),
                     hora=time(16, 30),
                     titulo="Toma de Muestra Exámenes de Sangre",
                     descripcion="Perfil bioquímico y hemograma en domicilio.",
-                    id_medico=None # Actividad sin médico asignado (opcional)
+                    id_medico=None
                 )
             ]
             db.add_all(actividades_ejemplo)
@@ -201,10 +204,10 @@ def vista_publica(request: Request):
     return templates.TemplateResponse(request=request, name="index.html")
 
 
-# --- AUTENTICACIÓN ---
+# --- AUTENTICACIÓN JWT ---
 @app.post("/api/auth/login", response_model=schemas.Token)
 def login(creds: schemas.LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(Usuario).filter(Usuario.username == creds.username).first()
+    user = db.query(Usuario).filter(Usuario.username == creds.username.strip()).first()
     if not user or not auth.verify_password(creds.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -221,8 +224,135 @@ def login(creds: schemas.LoginRequest, db: Session = Depends(get_db)):
     )
 
 @app.get("/api/auth/me", response_model=schemas.UsuarioResponse)
-def get_mi_perfil(current_admin: Usuario = Depends(auth.get_current_admin)):
-    return current_admin
+def get_mi_perfil(current_user: Usuario = Depends(auth.get_current_user)):
+    return current_user
+
+
+# --- GESTIÓN DE USUARIOS Y ROLES (RBAC: SUPER_USER Y ADMIN) ---
+@app.get("/api/admin/usuarios", response_model=List[schemas.UsuarioResponse])
+def listar_usuarios(
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """Permite listar los usuarios del sistema. Disponible para super_user y admin."""
+    return db.query(Usuario).order_by(Usuario.id_usuario.asc()).all()
+
+@app.post("/api/admin/usuarios", response_model=schemas.UsuarioResponse)
+def crear_usuario(
+    datos: schemas.UsuarioCreate,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Crea un nuevo usuario en el sistema.
+    Restricción de jerarquía:
+    - super_user puede crear cualquier usuario ('super_user' o 'admin').
+    - admin puede crear nuevos administradores ('admin') pero tiene PROHIBIDO crear o asignar rol 'super_user'.
+    """
+    rol_solicitado = (datos.rol or "admin").lower().strip()
+    if rol_solicitado not in ["super_user", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rol inválido. Los roles permitidos son: 'super_user' o 'admin'"
+        )
+
+    # Restricción jerárquica estricta
+    if rol_solicitado == "super_user" and (current_user.rol or "").lower() != "super_user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Restricción de jerarquía: Un administrador no tiene permitido crear o asignar el rol de 'super_user'"
+        )
+
+    username_limpio = datos.username.strip()
+    if not username_limpio:
+        raise HTTPException(status_code=400, detail="El nombre de usuario es obligatorio")
+
+    if not datos.password or len(datos.password.strip()) < 4:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 4 caracteres")
+
+    existe = db.query(Usuario).filter(Usuario.username == username_limpio).first()
+    if existe:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El nombre de usuario '{username_limpio}' ya se encuentra registrado"
+        )
+
+    nuevo_usuario = Usuario(
+        username=username_limpio,
+        password_hash=auth.get_password_hash(datos.password.strip()),
+        rol=rol_solicitado
+    )
+    db.add(nuevo_usuario)
+    db.commit()
+    db.refresh(nuevo_usuario)
+    return nuevo_usuario
+
+@app.put("/api/admin/usuarios/{id_usuario}", response_model=schemas.UsuarioResponse)
+def actualizar_usuario(
+    id_usuario: int,
+    datos: schemas.UsuarioUpdate,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """Actualiza datos de un usuario respetando la jerarquía RBAC."""
+    target_user = db.query(Usuario).filter(Usuario.id_usuario == id_usuario).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    es_super = (current_user.rol or "").lower() == "super_user"
+
+    # Admin no puede modificar a un super_user (a menos que sea él mismo)
+    if (target_user.rol or "").lower() == "super_user" and not es_super and current_user.id_usuario != target_user.id_usuario:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Un administrador no tiene permisos para modificar a un super_user"
+        )
+
+    # Admin no puede promover a nadie a super_user
+    if datos.rol:
+        nuevo_rol = datos.rol.lower().strip()
+        if nuevo_rol not in ["super_user", "admin"]:
+            raise HTTPException(status_code=400, detail="Rol inválido ('super_user' o 'admin')")
+        if nuevo_rol == "super_user" and not es_super:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Restricción de jerarquía: Un administrador no puede asignar el rol de 'super_user'"
+            )
+        target_user.rol = nuevo_rol
+
+    if datos.username:
+        username_limpio = datos.username.strip()
+        if username_limpio:
+            existe_otro = db.query(Usuario).filter(Usuario.username == username_limpio, Usuario.id_usuario != id_usuario).first()
+            if existe_otro:
+                raise HTTPException(status_code=400, detail="El nombre de usuario ya está en uso")
+            target_user.username = username_limpio
+
+    if datos.password and datos.password.strip():
+        target_user.password_hash = auth.get_password_hash(datos.password.strip())
+
+    db.commit()
+    db.refresh(target_user)
+    return target_user
+
+@app.delete("/api/admin/usuarios/{id_usuario}")
+def eliminar_usuario(
+    id_usuario: int,
+    current_user: Usuario = Depends(auth.require_super_user),
+    db: Session = Depends(get_db)
+):
+    """Solo un super_user puede eliminar usuarios."""
+    if current_user.id_usuario == id_usuario:
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta en sesión")
+
+    target_user = db.query(Usuario).filter(Usuario.id_usuario == id_usuario).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    username_eliminado = target_user.username
+    db.delete(target_user)
+    db.commit()
+    return {"message": f"Usuario '{username_eliminado}' eliminado exitosamente"}
 
 
 # --- GESTIÓN DE CUIDADORES (A QUIENES SE ASIGNAN LOS TURNOS) ---
@@ -233,7 +363,7 @@ def listar_cuidadores(db: Session = Depends(get_db)):
 @app.post("/api/admin/cuidadores", response_model=schemas.CuidadorResponse)
 def crear_cuidador(
     datos: schemas.CuidadorCreate,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     nuevo = Cuidador(**datos.model_dump())
@@ -246,7 +376,7 @@ def crear_cuidador(
 def actualizar_cuidador(
     id_cuidador: int,
     datos: schemas.CuidadorUpdate,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     cuid = db.query(Cuidador).filter(Cuidador.id_cuidador == id_cuidador).first()
@@ -261,15 +391,20 @@ def actualizar_cuidador(
 @app.delete("/api/admin/cuidadores/{id_cuidador}")
 def eliminar_cuidador(
     id_cuidador: int,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_super_user),
     db: Session = Depends(get_db)
 ):
+    """
+    Eliminación de cuidador:
+    RESTRICCIÓN RBAC ESTRICTA: Solo el rol 'super_user' tiene permitido eliminar o desactivar cuidadores.
+    Los usuarios con rol 'admin' tienen prohibida esta acción.
+    """
     cuid = db.query(Cuidador).filter(Cuidador.id_cuidador == id_cuidador).first()
     if not cuid:
         raise HTTPException(status_code=404, detail="Cuidador no encontrado")
     cuid.activo = False
     db.commit()
-    return {"message": "Cuidador desactivado exitosamente"}
+    return {"message": "Cuidador desactivado exitosamente por super_user"}
 
 
 # --- GESTIÓN DE PERSONAL MÉDICO (ACTIVIDADES Y VISITAS) ---
@@ -280,7 +415,7 @@ def listar_medicos(db: Session = Depends(get_db)):
 @app.post("/api/admin/medicos", response_model=schemas.PersonalMedicoResponse)
 def crear_medico(
     datos: schemas.PersonalMedicoCreate,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     nuevo = PersonalMedico(**datos.model_dump())
@@ -293,7 +428,7 @@ def crear_medico(
 def actualizar_medico(
     id_medico: int,
     datos: schemas.PersonalMedicoUpdate,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     med = db.query(PersonalMedico).filter(PersonalMedico.id_medico == id_medico).first()
@@ -308,7 +443,7 @@ def actualizar_medico(
 @app.delete("/api/admin/medicos/{id_medico}")
 def eliminar_medico(
     id_medico: int,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     med = db.query(PersonalMedico).filter(PersonalMedico.id_medico == id_medico).first()
@@ -319,7 +454,7 @@ def eliminar_medico(
     return {"message": "Personal médico desactivado exitosamente"}
 
 
-# --- BLOQUES HORARIOS (AM, PM1, PM2, NOCTURNO) ---
+# --- BLOQUES HORARIOS ---
 @app.get("/api/admin/bloques", response_model=List[schemas.BloqueTurnoResponse])
 def listar_bloques(db: Session = Depends(get_db)):
     return db.query(BloqueTurno).order_by(BloqueTurno.id_bloque.asc()).all()
@@ -349,7 +484,6 @@ def obtener_cuadrante_semanal(
 
     bloques = db.query(BloqueTurno).order_by(BloqueTurno.id_bloque.asc()).all()
 
-    # Asignaciones de cuidadores en la semana
     asignaciones = (
         db.query(AsignacionTurno)
         .join(Cuidador)
@@ -401,14 +535,13 @@ def obtener_cuadrante_semanal(
     }
 
 
-# --- ASIGNACIONES DE TURNO (SOLO CUIDADORES, CON HORAS 00:00 A 23:59 Y MÚLTIPLES CUIDADORES) ---
+# --- ASIGNACIONES DE TURNO ---
 @app.post("/api/admin/asignaciones", response_model=schemas.AsignacionTurnoResponse)
 def crear_o_actualizar_asignacion(
     datos: schemas.AsignacionTurnoCreate,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Determinar lista de cuidadores a asignar (1 o más)
     cuidadores_ids = []
     if datos.cuidadores_ids and len(datos.cuidadores_ids) > 0:
         cuidadores_ids = [cid for cid in datos.cuidadores_ids if cid]
@@ -421,7 +554,6 @@ def crear_o_actualizar_asignacion(
             detail="Debe seleccionar al menos un/a cuidador/a"
         )
 
-    # Validar que los cuidadores seleccionados existan y estén activos
     cuidadores = db.query(Cuidador).filter(Cuidador.id_cuidador.in_(cuidadores_ids), Cuidador.activo == True).all()
     cuidadores_map = {c.id_cuidador: c for c in cuidadores}
     for cid in cuidadores_ids:
@@ -431,7 +563,6 @@ def crear_o_actualizar_asignacion(
                 detail=f"El cuidador con ID {cid} no es válido o está inactivo"
             )
 
-    # 2. Asignar o clasificar bloque correspondiente
     if datos.id_bloque:
         bloque = db.query(BloqueTurno).filter(BloqueTurno.id_bloque == datos.id_bloque).first()
         if not bloque:
@@ -439,7 +570,6 @@ def crear_o_actualizar_asignacion(
     else:
         bloque = calcular_bloque_por_horario(datos.hora_inicio, db)
 
-    # 3. Guardar / actualizar asignación para cada cuidador asignado
     asignaciones_guardadas = []
     for cid in cuidadores_ids:
         existente = (
@@ -480,7 +610,7 @@ def crear_o_actualizar_asignacion(
 @app.delete("/api/admin/asignaciones/{id_asignacion}")
 def eliminar_asignacion(
     id_asignacion: int,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     asig = db.query(AsignacionTurno).filter(AsignacionTurno.id_asignacion == id_asignacion).first()
@@ -491,7 +621,7 @@ def eliminar_asignacion(
     return {"message": "Turno desasignado exitosamente"}
 
 
-# --- ACTIVIDADES MÉDICAS (PERSONAL MÉDICO ASIGNABLE Opcional) ---
+# --- ACTIVIDADES MÉDICAS ---
 @app.get("/api/public/actividades-semana", response_model=List[schemas.ActividadMedicaResponse])
 def obtener_actividades_semana(
     fecha_base: Optional[date] = Query(None),
@@ -513,7 +643,7 @@ def obtener_actividades_semana(
 @app.post("/api/admin/actividades", response_model=schemas.ActividadMedicaResponse)
 def crear_actividad(
     datos: schemas.ActividadMedicaCreate,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     if datos.id_medico:
@@ -531,7 +661,7 @@ def crear_actividad(
 def actualizar_actividad(
     id_actividad: int,
     datos: schemas.ActividadMedicaUpdate,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     act = db.query(ActividadMedica).filter(ActividadMedica.id_actividad == id_actividad).first()
@@ -546,7 +676,7 @@ def actualizar_actividad(
 @app.delete("/api/admin/actividades/{id_actividad}")
 def eliminar_actividad(
     id_actividad: int,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     act = db.query(ActividadMedica).filter(ActividadMedica.id_actividad == id_actividad).first()
@@ -561,7 +691,7 @@ def eliminar_actividad(
 @app.post("/api/admin/notificaciones/enviar-dia", response_model=schemas.NotificacionDiaResponse)
 def enviar_notificaciones_del_dia(
     payload: schemas.NotificacionDiaRequest,
-    admin: Usuario = Depends(auth.get_current_admin),
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     target_date = payload.fecha or date.today()

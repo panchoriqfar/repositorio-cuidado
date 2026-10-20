@@ -40,6 +40,7 @@ async function checkAuth() {
     const loginBtn = document.getElementById("loginBtn");
     const btnNuevaAsignacion = document.getElementById("btnNuevaAsignacion");
     const btnNuevaActividad = document.getElementById("btnNuevaActividad");
+    const btnGestionUsuarios = document.getElementById("btnGestionUsuarios");
 
     if (!token) {
         currentUserProfile = null;
@@ -51,6 +52,10 @@ async function checkAuth() {
         btnNuevaAsignacion.classList.remove("inline-flex");
         btnNuevaActividad.classList.add("hidden");
         btnNuevaActividad.classList.remove("inline-flex");
+        if (btnGestionUsuarios) {
+            btnGestionUsuarios.classList.add("hidden");
+            btnGestionUsuarios.classList.remove("inline-flex");
+        }
         loginBtn.classList.remove("hidden");
         return false;
     }
@@ -80,6 +85,10 @@ async function checkAuth() {
             btnNuevaAsignacion.classList.add("inline-flex");
             btnNuevaActividad.classList.remove("hidden");
             btnNuevaActividad.classList.add("inline-flex");
+            if (btnGestionUsuarios) {
+                btnGestionUsuarios.classList.remove("hidden");
+                btnGestionUsuarios.classList.add("inline-flex");
+            }
             loginBtn.classList.add("hidden");
             return true;
         } else {
@@ -988,17 +997,39 @@ function closeLoginModal() {
 
 // --- ACCIONES ADMIN: GESTIÓN DE USUARIOS Y ROLES (RBAC) ---
 async function openUsuariosModal() {
-    document.getElementById("usuariosModal").classList.remove("hidden");
+    const modal = document.getElementById("usuariosModal");
+    if (!modal) return;
+    modal.classList.remove("hidden");
+
+    // Si aún no tenemos perfil en memoria, consultar /api/auth/me
+    if (!currentUserProfile) {
+        const token = getToken();
+        if (token) {
+            try {
+                const res = await fetch("/api/auth/me", {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    currentUserProfile = await res.json();
+                }
+            } catch (err) {
+                console.error("Error al obtener perfil para usuariosModal:", err);
+            }
+        }
+    }
+
     actualizarInfoSesionUsuariosModal();
     await cargarUsuariosModal();
 }
 
 function closeUsuariosModal() {
-    document.getElementById("usuariosModal").classList.add("hidden");
-    document.getElementById("nuevoUsuarioForm").reset();
+    const modal = document.getElementById("usuariosModal");
+    if (modal) modal.classList.add("hidden");
+    const form = document.getElementById("nuevoUsuarioForm");
+    if (form) form.reset();
     const msgDiv = document.getElementById("usuarioFormMsg");
     if (msgDiv) {
-        msgDiv.className = "text-xs hidden font-medium";
+        msgDiv.className = "text-xs hidden font-medium p-2 rounded-lg";
         msgDiv.textContent = "";
     }
 }
@@ -1009,7 +1040,10 @@ function actualizarInfoSesionUsuariosModal() {
     const optSuperUser = document.getElementById("optSuperUser");
     const avisoJerarquia = document.getElementById("avisoJerarquiaRol");
 
-    if (!currentUserProfile) return;
+    if (!currentUserProfile) {
+        if (sesionNombre) sesionNombre.textContent = "Usuario conectado";
+        return;
+    }
 
     const esSuper = (currentUserProfile.rol || "").toLowerCase() === "super_user";
     if (sesionNombre) sesionNombre.textContent = currentUserProfile.username;
@@ -1039,7 +1073,8 @@ function actualizarInfoSesionUsuariosModal() {
         } else {
             optSuperUser.disabled = true;
             optSuperUser.hidden = true;
-            document.getElementById("usrRol").value = "admin";
+            const rolSelect = document.getElementById("usrRol");
+            if (rolSelect) rolSelect.value = "admin";
             if (avisoJerarquia) avisoJerarquia.classList.remove("hidden");
         }
     }
@@ -1047,6 +1082,7 @@ function actualizarInfoSesionUsuariosModal() {
 
 async function cargarUsuariosModal() {
     const cont = document.getElementById("listaUsuarios");
+    if (!cont) return;
     const token = getToken();
     cont.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center"><i class="fa-solid fa-spinner animate-spin mr-1"></i> Cargando usuarios...</p>`;
 
@@ -1071,7 +1107,7 @@ async function cargarUsuariosModal() {
             const esMismo = currentUserProfile && u.id_usuario === currentUserProfile.id_usuario;
 
             return `
-                <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white">
+                <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white shadow-xs">
                     <div class="flex items-center space-x-3">
                         <div class="w-8 h-8 rounded-lg ${uEsSuper ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'} flex items-center justify-center font-bold text-xs">
                             <i class="fa-solid ${uEsSuper ? 'fa-crown text-amber-500' : 'fa-shield'}"></i>
@@ -1079,7 +1115,7 @@ async function cargarUsuariosModal() {
                         <div>
                             <div class="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                                 <span>${u.username}</span>
-                                ${esMismo ? '<span class="text-[10px] text-slate-400 font-normal">(Tu cuenta)</span>' : ''}
+                                ${esMismo ? '<span class="text-[10px] text-slate-400 font-normal">(Tu cuenta actual)</span>' : ''}
                             </div>
                             <div class="text-[11px] text-slate-500">ID #${u.id_usuario}</div>
                         </div>
@@ -1092,7 +1128,7 @@ async function cargarUsuariosModal() {
                         </span>
 
                         ${(esSuper && !esMismo) ? `
-                            <button onclick="eliminarUsuario(${u.id_usuario}, '${u.username}')" title="Eliminar usuario" class="text-xs text-rose-500 hover:text-rose-700 p-1 transition-colors">
+                            <button onclick="eliminarUsuario(${u.id_usuario}, '${u.username}')" title="Eliminar usuario" class="text-xs text-rose-500 hover:text-rose-700 p-1.5 rounded hover:bg-rose-50 transition-colors">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
                         ` : ''}
@@ -1107,15 +1143,51 @@ async function cargarUsuariosModal() {
 }
 
 async function handleCrearUsuario(e) {
-    e.preventDefault();
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
     const token = getToken();
-    const username = document.getElementById("usrUsername").value.trim();
-    const password = document.getElementById("usrPassword").value.trim();
-    const rol = document.getElementById("usrRol").value;
+    if (!token) {
+        alert("Tu sesión ha expirado o no estás autenticado. Por favor inicia sesión nuevamente.");
+        openLoginModal();
+        return;
+    }
+
+    const usernameInput = document.getElementById("usrUsername");
+    const passwordInput = document.getElementById("usrPassword");
+    const rolInput = document.getElementById("usrRol");
+    const btnSubmit = document.getElementById("btnCrearUsuario");
     const msgDiv = document.getElementById("usuarioFormMsg");
 
-    msgDiv.className = "text-xs hidden font-medium";
-    msgDiv.textContent = "";
+    const username = usernameInput ? usernameInput.value.trim() : "";
+    const password = passwordInput ? passwordInput.value.trim() : "";
+    const rol = rolInput ? rolInput.value : "admin";
+
+    if (!username) {
+        alert("Por favor ingresa un nombre de usuario.");
+        if (usernameInput) usernameInput.focus();
+        return;
+    }
+
+    if (!password || password.length < 4) {
+        alert("La contraseña debe tener al menos 4 caracteres.");
+        if (passwordInput) passwordInput.focus();
+        return;
+    }
+
+    // Efecto de carga en botón
+    const origBtnHtml = btnSubmit ? btnSubmit.innerHTML : "";
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Registrando...`;
+    }
+
+    if (msgDiv) {
+        msgDiv.className = "text-xs hidden font-medium p-2 rounded-lg";
+        msgDiv.textContent = "";
+    }
 
     try {
         const res = await fetch("/api/admin/usuarios", {
@@ -1126,23 +1198,54 @@ async function handleCrearUsuario(e) {
             },
             body: JSON.stringify({ username, password, rol })
         });
+
         const data = await res.json();
+
         if (res.ok) {
-            msgDiv.className = "text-xs text-emerald-600 font-semibold block";
-            msgDiv.textContent = `¡Usuario '${data.username}' creado exitosamente con rol '${data.rol}'!`;
-            document.getElementById("nuevoUsuarioForm").reset();
+            // Éxito: notificación con alerta clara y banner visual
+            alert(`✅ ¡Usuario '${data.username}' registrado exitosamente con rol '${data.rol}'!`);
+
+            if (msgDiv) {
+                msgDiv.className = "text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold block p-2 rounded-lg";
+                msgDiv.textContent = `✅ Usuario '${data.username}' registrado exitosamente (${data.rol}).`;
+            }
+
+            const form = document.getElementById("nuevoUsuarioForm");
+            if (form) form.reset();
             actualizarInfoSesionUsuariosModal();
             await cargarUsuariosModal();
+
             setTimeout(() => {
-                msgDiv.className = "text-xs hidden font-medium";
-            }, 4000);
+                if (msgDiv) msgDiv.className = "text-xs hidden font-medium p-2 rounded-lg";
+            }, 5000);
         } else {
-            msgDiv.className = "text-xs text-rose-600 font-semibold block";
-            msgDiv.textContent = data.detail || "Error al crear usuario";
+            let errorMsg = "Error al crear usuario";
+            if (data && data.detail) {
+                if (Array.isArray(data.detail)) {
+                    errorMsg = data.detail.map(d => d.msg || JSON.stringify(d)).join(", ");
+                } else {
+                    errorMsg = data.detail;
+                }
+            }
+            alert(`❌ No se pudo crear el usuario:\n${errorMsg}`);
+
+            if (msgDiv) {
+                msgDiv.className = "text-xs bg-rose-50 text-rose-800 border border-rose-200 font-semibold block p-2 rounded-lg";
+                msgDiv.textContent = `❌ ${errorMsg}`;
+            }
         }
     } catch (err) {
-        msgDiv.className = "text-xs text-rose-600 font-semibold block";
-        msgDiv.textContent = "Error de conexión con el servidor";
+        console.error("Error al registrar usuario:", err);
+        alert("❌ Error de comunicación con el servidor. Verifica que el backend esté activo.");
+        if (msgDiv) {
+            msgDiv.className = "text-xs bg-rose-50 text-rose-800 border border-rose-200 font-semibold block p-2 rounded-lg";
+            msgDiv.textContent = "❌ Error de comunicación con el servidor.";
+        }
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = origBtnHtml;
+        }
     }
 }
 
@@ -1156,6 +1259,7 @@ async function eliminarUsuario(idUsuario, username) {
         });
         const data = await res.json();
         if (res.ok) {
+            alert(`✅ Usuario '${username}' eliminado correctamente.`);
             await cargarUsuariosModal();
         } else {
             alert(data.detail || "Error al eliminar usuario");

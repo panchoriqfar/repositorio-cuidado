@@ -88,12 +88,18 @@ def startup_seed_data():
             db.add(super_user)
             db.commit()
         else:
-            # Migración suave: si hay usuarios con rol antiguo 'ADMIN', normalizar a 'super_user'
+            # Migración suave: normalizar usuarios antiguos 'ADMIN' a 'super_user'
             admins_viejos = db.query(Usuario).filter(Usuario.rol == "ADMIN").all()
             for u in admins_viejos:
                 u.rol = "super_user"
             if admins_viejos:
                 db.commit()
+
+        # Garantizar que la cuenta superuser_user tenga rol super_user
+        super_record = db.query(Usuario).filter(Usuario.username == superuser_user).first()
+        if super_record and super_record.rol != "super_user":
+            super_record.rol = "super_user"
+            db.commit()
 
         # 2. Bloques visuales para el cuadrante del front: AM, PM1, PM2, Nocturno
         bloques_default = [
@@ -207,20 +213,31 @@ def vista_publica(request: Request):
 # --- AUTENTICACIÓN JWT ---
 @app.post("/api/auth/login", response_model=schemas.Token)
 def login(creds: schemas.LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(Usuario).filter(Usuario.username == creds.username.strip()).first()
+    username_clean = creds.username.strip()
+    user = db.query(Usuario).filter(Usuario.username == username_clean).first()
     if not user or not auth.verify_password(creds.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuario o contraseña incorrectos"
         )
+
+    # Asegurar rol normalizado
+    rol_limpio = (user.rol or "admin").lower().strip()
+    superuser_user = os.getenv("SUPERUSER_USERNAME") or os.getenv("ADMIN_DEFAULT_USERNAME") or "admin"
+    if user.username == superuser_user:
+        rol_limpio = "super_user"
+        if user.rol != "super_user":
+            user.rol = "super_user"
+            db.commit()
+
     access_token = auth.create_access_token(
-        data={"sub": user.username, "rol": user.rol}
+        data={"sub": user.username, "rol": rol_limpio}
     )
     return schemas.Token(
         access_token=access_token,
         token_type="bearer",
         username=user.username,
-        rol=user.rol
+        rol=rol_limpio
     )
 
 @app.get("/api/auth/me", response_model=schemas.UsuarioResponse)

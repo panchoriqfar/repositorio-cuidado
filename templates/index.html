@@ -47,15 +47,15 @@
             <!-- Acciones de Cabecera -->
             <div class="flex items-center space-x-2 sm:space-x-3">
                 <!-- Modo Admin Badge & Botones -->
-                <div id="adminBadge" class="hidden items-center space-x-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-full text-xs font-semibold">
+                <div id="adminBadge" onclick="openUsuariosModal()" class="hidden items-center space-x-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-colors shadow-sm" title="Click para gestionar Usuarios y Roles (RBAC)">
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                     <span id="adminUsername">Admin</span>
                 </div>
 
                 <div id="adminQuickActions" class="hidden items-center space-x-1.5 sm:space-x-2">
-                    <button onclick="openUsuariosModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg transition-colors flex items-center gap-1.5" title="Gestión de Usuarios y Roles (RBAC)">
-                        <i class="fa-solid fa-users-gear text-indigo-600"></i>
-                        <span class="hidden sm:inline">Usuarios</span>
+                    <button onclick="openUsuariosModal()" class="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5" title="Gestión de Usuarios y Roles (RBAC)">
+                        <i class="fa-solid fa-users-gear text-sm"></i>
+                        <span>Usuarios</span>
                     </button>
                     <button onclick="openCuidadoresModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1.5" title="Gestionar Cuidadores">
                         <i class="fa-solid fa-hands-holding-child text-brand-600"></i>
@@ -109,6 +109,11 @@
             <div class="flex items-center space-x-2 w-full md:w-auto justify-end">
                 <input type="date" id="datePicker" onchange="seleccionarFecha(this.value)" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-slate-50">
                 
+                <button id="btnGestionUsuarios" onclick="openUsuariosModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5" title="Gestionar Usuarios y Roles">
+                    <i class="fa-solid fa-users-gear"></i>
+                    <span>Usuarios</span>
+                </button>
+
                 <button id="btnNuevaAsignacion" onclick="openAsignacionModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5">
                     <i class="fa-solid fa-plus"></i>
                     <span>Asignar Turno Cuidador</span>
@@ -475,29 +480,42 @@
                     </span>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input type="text" id="usrUsername" required placeholder="Nombre de Usuario" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                    <input type="password" id="usrPassword" required placeholder="Contraseña (mín 4 car.)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                    <select id="usrRol" required class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                        <option value="admin">Administrador (admin)</option>
-                        <option id="optSuperUser" value="super_user">Superusuario (super_user)</option>
-                    </select>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nombre de Usuario</label>
+                        <input type="text" id="usrUsername" required placeholder="Ej: nuevo_usuario" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Contraseña</label>
+                        <input type="password" id="usrPassword" required placeholder="Mínimo 4 caracteres" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Rol a Asignar</label>
+                        <select id="usrRol" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
+                            <option value="admin">Administrador (admin)</option>
+                            <option id="optSuperUser" value="super_user">Superusuario (super_user)</option>
+                        </select>
+                    </div>
                 </div>
-                <div id="usuarioFormMsg" class="text-xs hidden font-medium"></div>
+                <div id="usuarioFormMsg" class="text-xs hidden font-medium p-2 rounded-lg"></div>
                 <div class="text-right">
-                    <button type="submit" id="btnCrearUsuario" class="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition-colors">
-                        + Registrar Usuario
+                    <button type="submit" id="btnCrearUsuario" onclick="handleCrearUsuario(event)" class="px-5 py-2.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition-all inline-flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-user-plus"></i>
+                        <span>+ Registrar Usuario</span>
                     </button>
                 </div>
             </form>
 
             <!-- Lista de Usuarios Registrados -->
-            <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="listaUsuarios">
-                <!-- Dinámico -->
+            <div>
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Usuarios Activos en el Sistema</h4>
+                <div class="overflow-y-auto max-h-52 space-y-2 pr-1" id="listaUsuarios">
+                    <!-- Dinámico -->
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- SCRIPT PRINCIPAL -->
-    <script src="/static/js/app.js"></script>
+    <!-- SCRIPT PRINCIPAL CON CACHE-BUSTING -->
+    <script src="/static/js/app.js?v=2.2"></script>
 </body>
 </html>

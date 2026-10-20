@@ -56,6 +56,11 @@ async function checkAuth() {
             btnGestionUsuarios.classList.add("hidden");
             btnGestionUsuarios.classList.remove("inline-flex");
         }
+        const barraWhatsappSemanal = document.getElementById("barraWhatsappSemanal");
+        if (barraWhatsappSemanal) {
+            barraWhatsappSemanal.classList.add("hidden");
+            barraWhatsappSemanal.classList.remove("flex");
+        }
         loginBtn.classList.remove("hidden");
         return false;
     }
@@ -240,7 +245,7 @@ function poblarSelectsFormularios() {
     const selectCuid = document.getElementById("asigCuidador");
     selectCuid.innerHTML = listaCuidadoresCache
         .filter(c => c.activo)
-        .map(c => `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido}</option>`)
+        .map(c => `<option value="${c.id_cuidador}">${(c.nombre + (c.apellido ? ' ' + c.apellido : '')).trim()}</option>`)
         .join("");
 
     // 2. Select de BLOQUES en cuadrante (AM, PM1, PM2, Nocturno) - Solo nombres de bloque, sin horas
@@ -316,7 +321,7 @@ function agregarCampoCuidadorAdicional(idPreseleccionado = null) {
 
     const optionsHtml = listaCuidadoresCache
         .filter(c => c.activo)
-        .map(c => `<option value="${c.id_cuidador}" ${idPreseleccionado === c.id_cuidador ? 'selected' : ''}>${c.nombre} ${c.apellido}</option>`)
+        .map(c => `<option value="${c.id_cuidador}" ${idPreseleccionado === c.id_cuidador ? 'selected' : ''}>${(c.nombre + (c.apellido ? ' ' + c.apellido : '')).trim()}</option>`)
         .join("");
 
     div.innerHTML = `
@@ -789,8 +794,8 @@ function renderizarListaCuidadoresModal() {
     cont.innerHTML = listaCuidadoresCache.map(c => `
         <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white">
             <div>
-                <div class="text-xs font-bold text-slate-900">${c.nombre} ${c.apellido}</div>
-                <div class="text-[11px] text-slate-500">${c.rol_trabajo} &bull; ${c.telefono_whatsapp}</div>
+                <div class="text-xs font-bold text-slate-900">${(c.nombre + (c.apellido ? ' ' + c.apellido : '')).trim()}</div>
+                <div class="text-[11px] text-slate-500 font-mono flex items-center gap-1.5"><i class="fa-brands fa-whatsapp text-emerald-600"></i> ${c.telefono_whatsapp}</div>
             </div>
             <div class="flex items-center space-x-2">
                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${c.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
@@ -1409,9 +1414,8 @@ async function handleCambiarPassword(e) {
             if (currentUserProfile) currentUserProfile.must_change_password = false;
             setTimeout(() => {
                 document.getElementById("cambiarPasswordModal").classList.add("hidden");
-                alert("✅ Contraseña cambiada exitosamente. Por seguridad, inicia sesión nuevamente.");
-                logoutAdmin();
-            }, 800);
+                alert("✅ Contraseña cambiada y actualizada exitosamente.");
+            }, 600);
         } else {
             const errorMsg = data.detail || "Error al cambiar la contraseña";
             alert(`❌ ${errorMsg}`);
@@ -1436,7 +1440,7 @@ async function ejecutarEnvioWhatsAppSemanal() {
     const token = getToken();
     if (!token) { alert("Debes iniciar sesión para enviar notificaciones."); return; }
 
-    if (!confirm("¿Enviar WhatsApp a TODOS los cuidadores de la semana completa?\n\nCada cuidador recibirá su turno y las actividades médicas del día correspondiente.")) return;
+    if (!confirm("¿Enviar WhatsApp a TODOS los cuidadores de la semana completa?\n\nCada cuidador recibirá un mensaje consolidado con todos sus turnos y actividades de la semana.")) return;
 
     const origHtml = btn.innerHTML;
     btn.disabled = true;
@@ -1449,15 +1453,20 @@ async function ejecutarEnvioWhatsAppSemanal() {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
             },
-            body: JSON.stringify({ fecha_base: fechaActual.toISOString().split("T")[0] })
+            body: JSON.stringify({ fecha_base: formatDateIso(fechaActual) })
         });
         const data = await res.json();
 
         if (res.ok) {
-            let resumen = `✅ WhatsApp semanal enviado\n\n📅 Semana: ${data.semana_inicio} → ${data.semana_fin}\n✉️ Enviados: ${data.total_enviados}\n❌ Errores: ${data.total_errores}\n\nDetalle por día:\n`;
-            (data.detalle_por_dia || []).forEach(d => {
-                resumen += `• ${d.fecha}: ${d.enviados}/${d.total} enviados${d.errores > 0 ? ` (${d.errores} errores)` : ''}\n`;
-            });
+            let resumen = `✅ WhatsApp semanal procesado\n\n📅 Semana: ${data.semana_inicio} al ${data.semana_fin}\n👥 Cuidadores en turno: ${data.total_cuidadores || 0}\n🕒 Turnos totales: ${data.total_asignaciones || 0}\n✉️ Mensajes enviados: ${data.enviados}\n❌ Errores: ${data.errores}\n`;
+            if (data.detalles && data.detalles.length > 0) {
+                resumen += "\nDetalle por cuidador/a:\n";
+                data.detalles.forEach(d => {
+                    resumen += `• ${d.cuidador} (${d.total_turnos} turnos): ${d.estado}${d.detalle_error ? ` (${d.detalle_error})` : ''}\n`;
+                });
+            } else if (data.total_asignaciones === 0) {
+                resumen += "\nNo hay turnos asignados para esta semana.";
+            }
             alert(resumen);
             await cargarCuadrante();
         } else {

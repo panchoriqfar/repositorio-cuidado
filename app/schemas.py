@@ -48,9 +48,9 @@ class NotificacionSemanalRequest(BaseModel):
 
 # --- Esquemas de Cuidadores (Exclusivos para Turnos) ---
 class CuidadorBase(BaseModel):
-    nombre: str = Field(..., description="Nombre del cuidador/a (obligatorio)")
+    nombre: str = Field(..., min_length=1, description="Nombre del cuidador/a (obligatorio)")
     apellido: Optional[str] = Field(default="", description="Apellido (opcional)")
-    telefono_whatsapp: str = Field(..., description="Formato E.164, ej: +56912345678 (obligatorio)")
+    telefono_whatsapp: str = Field(..., pattern=r"^\+569\d{8}$", description="Formato +569XXXXXXXX (obligatorio, exactamente 8 dígitos tras +569)")
     activo: bool = True
 
 class CuidadorCreate(CuidadorBase):
@@ -59,7 +59,7 @@ class CuidadorCreate(CuidadorBase):
 class CuidadorUpdate(BaseModel):
     nombre: Optional[str] = None
     apellido: Optional[str] = None
-    telefono_whatsapp: Optional[str] = None
+    telefono_whatsapp: Optional[str] = Field(default=None, pattern=r"^\+569\d{8}$")
     activo: Optional[bool] = None
 
 class CuidadorResponse(BaseModel):
@@ -67,7 +67,7 @@ class CuidadorResponse(BaseModel):
     nombre: str
     apellido: Optional[str] = ""
     telefono_whatsapp: str
-    rol_trabajo: Optional[str] = ""
+    rol_trabajo: Optional[str] = None
     activo: bool
 
     class Config:

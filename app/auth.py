@@ -103,6 +103,11 @@ def get_current_user(
 
 def require_super_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
     """Valida que el usuario tenga rol exclusivo de Super Admin / super_user."""
+    if getattr(current_user, "must_change_password", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Debe cambiar su contraseña obligatoriamente en el primer inicio de sesión antes de continuar."
+        )
     rol_normalizado = (current_user.rol or "").lower().strip()
     if rol_normalizado not in ["super_user", "super_admin", "superadmin"] and current_user.rol not in ["SUPER_USER", "SUPER_ADMIN", "SUPERADMIN"]:
         raise HTTPException(
@@ -114,6 +119,11 @@ def require_super_user(current_user: Usuario = Depends(get_current_user)) -> Usu
 
 def require_admin_or_super_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
     """Valida que el usuario tenga rol de 'super_user', 'super_admin' o 'admin'."""
+    if getattr(current_user, "must_change_password", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Debe cambiar su contraseña obligatoriamente en el primer inicio de sesión antes de continuar."
+        )
     rol_normalizado = (current_user.rol or "").lower().strip()
     roles_permitidos = ["super_user", "super_admin", "superadmin", "admin"]
     if rol_normalizado not in roles_permitidos and current_user.rol not in ["SUPER_USER", "SUPER_ADMIN", "ADMIN"]:

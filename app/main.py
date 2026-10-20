@@ -18,6 +18,21 @@ load_dotenv()
 # Crear tablas en la base de datos (PostgreSQL/Supabase o SQLite de respaldo)
 Base.metadata.create_all(bind=engine)
 
+def migrar_esquema_bd(target_engine):
+    """Garantiza la existencia de columnas nuevas como must_change_password."""
+    from sqlalchemy import inspect, text
+    try:
+        inspector = inspect(target_engine)
+        if "usuarios" in inspector.get_table_names():
+            columnas = [c["name"] for c in inspector.get_columns("usuarios")]
+            if "must_change_password" not in columnas:
+                with target_engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE usuarios ADD COLUMN must_change_password BOOLEAN DEFAULT 0 NOT NULL"))
+    except Exception as exc:
+        print(f"Aviso migración de esquema: {exc}")
+
+migrar_esquema_bd(engine)
+
 app = FastAPI(
     title="Sistema de Gestión de Turnos de Cuidadores y Actividades Médicas",
     description="API con Control de Acceso Basado en Roles (RBAC: super_user y admin), Gestión de Turnos y Actividades Médicas",
@@ -254,7 +269,7 @@ def cambiar_password(
 ):
     """
     Permite a cualquier usuario autenticado cambiar su propia contraseña.
-    Si must_change_password=True, es obligatorio antes de continuar.
+    Si must_change_password=True, es obligatorio antes de realizar acciones en el sistema.
     """
     if not auth.verify_password(datos.password_actual, current_user.password_hash):
         raise HTTPException(
@@ -266,6 +281,11 @@ def cambiar_password(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La nueva contraseña debe tener al menos 4 caracteres"
+        )
+    if auth.verify_password(nueva, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La nueva contraseña debe ser diferente a la contraseña actual"
         )
     current_user.password_hash = auth.get_password_hash(nueva)
     current_user.must_change_password = False
@@ -390,18 +410,25 @@ def crear_cuidador(
     db: Session = Depends(get_db)
 ):
     import re
+    nombre_limpio = datos.nombre.strip()
+    if not nombre_limpio:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre del cuidador/a es obligatorio"
+        )
+
     # Validar formato WhatsApp: debe ser +569 seguido de exactamente 8 dígitos
     patron_wa = re.compile(r"^\+569\d{8}$")
     if not patron_wa.match(datos.telefono_whatsapp):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El número de WhatsApp debe tener el formato +569XXXXXXXX (8 dígitos después de +569)"
+            detail="El número de WhatsApp debe tener el formato +569XXXXXXXX (exactamente 8 dígitos después de +569)"
         )
     nuevo = Cuidador(
-        nombre=datos.nombre.strip(),
+        nombre=nombre_limpio,
         apellido=(datos.apellido or "").strip(),
         telefono_whatsapp=datos.telefono_whatsapp.strip(),
-        rol_trabajo="Cuidador",
+        rol_trabajo="",
         activo=True
     )
     db.add(nuevo)
@@ -544,8 +571,7 @@ def obtener_cuadrante_semanal(
         matriz[b_id][f_str].append({
             "id_asignacion": asig.id_asignacion,
             "id_cuidador": asig.id_cuidador,
-            "cuidador_nombre": f"{asig.cuidador.nombre} {asig.cuidador.apellido}",
-            "cuidador_rol": asig.cuidador.rol_trabajo,
+            "cuidador_nombre": f"{asig.cuidador.nombre} {asig.cuidador.apellido or ''}".strip(),
             "cuidador_telefono": asig.cuidador.telefono_whatsapp,
             "hora_inicio": hora_ini_str,
             "hora_fin": hora_fin_str,
@@ -744,32 +770,9 @@ def enviar_notificaciones_semana(
     db: Session = Depends(get_db)
 ):
     """
-    Envía WhatsApp a TODOS los cuidadores de toda la semana (lunes a domingo),
-    incluyendo sus actividades médicas del día correspondiente.
+    Envía mensaje consolidado de WhatsApp a TODOS los cuidadores de la semana
+    con sus turnos asignados y actividades médicas correspondientes.
     """
     fecha_base = payload.fecha_base or date.today()
-    inicio_semana = fecha_base - timedelta(days=fecha_base.weekday())
-
-    resultados_semana = []
-    total_enviados = 0
-    total_errores = 0
-
-    for i in range(7):
-        dia = inicio_semana + timedelta(days=i)
-        resultado_dia = whatsapp.enviar_notificaciones_del_dia(dia, db)
-        resultados_semana.append({
-            "fecha": dia.isoformat(),
-            "total": resultado_dia["total_asignaciones"],
-            "enviados": resultado_dia["enviados"],
-            "errores": resultado_dia["errores"],
-        })
-        total_enviados += resultado_dia["enviados"]
-        total_errores += resultado_dia["errores"]
-
-    return {
-        "semana_inicio": inicio_semana.isoformat(),
-        "semana_fin": (inicio_semana + timedelta(days=6)).isoformat(),
-        "total_enviados": total_enviados,
-        "total_errores": total_errores,
-        "detalle_por_dia": resultados_semana
-    }
+    resultado = whatsapp.enviar_notificaciones_semana_completa(fecha_base, db)
+    return resultado

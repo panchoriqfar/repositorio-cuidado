@@ -6,8 +6,8 @@ class Usuario(Base):
     """
     Tabla de Usuarios del Sistema con soporte de Roles (RBAC):
     - 'super_user': Acceso total, gestión de usuarios, orquestación y eliminación de cuidadores.
-    - 'admin': Mismos permisos operativos excepto eliminación de cuidadores y asignación de rol super_user.
-    - must_change_password: Si es True, el usuario debe cambiar su contraseña en el primer login.
+    - 'admin': Mismos permisos operativos excepto eliminación de cuidadores y gestión de usuarios.
+    - must_change_password: Si es True, el usuario debe cambiar su contraseña obligatoriamente en el primer login.
     """
     __tablename__ = "usuarios"
 
@@ -23,16 +23,16 @@ class Cuidador(Base):
     Tabla de Cuidadores: A quienes EXCLUSIVAMENTE se les asignan los turnos de cuidado.
     - nombre: obligatorio
     - apellido: opcional
-    - telefono_whatsapp: obligatorio, formato +569XXXXXXXX
-    - rol_trabajo: eliminado del formulario (queda como campo interno, por compatibilidad)
+    - telefono_whatsapp: obligatorio, formato +569XXXXXXXX (8 números)
+    - rol_trabajo: eliminado por completo de la lógica (mantenido opcional nullable para compatibilidad con esquemas anteriores)
     """
     __tablename__ = "cuidadores"
 
     id_cuidador = Column(Integer, primary_key=True, index=True, autoincrement=True)
     nombre = Column(String(100), nullable=False)
     apellido = Column(String(100), nullable=True, default="")
-    telefono_whatsapp = Column(String(25), nullable=False)  # Formato E.164 ej: +56912345678
-    rol_trabajo = Column(String(100), default="Cuidador", nullable=True)
+    telefono_whatsapp = Column(String(25), nullable=False)  # Formato +569XXXXXXXX
+    rol_trabajo = Column(String(100), default="", nullable=False)  # Campo interno por compatibilidad con esquema previo
     activo = Column(Boolean, default=True, nullable=False)
 
     # Relaciones: Solo los cuidadores tienen asignaciones de turnos

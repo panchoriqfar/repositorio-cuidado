@@ -82,8 +82,9 @@ def build_whatsapp_message(
         mensaje += "\n📋 *Actividades y Visitas Médicas Programadas Hoy:*\n"
         for idx, act in enumerate(actividades, 1):
             hora_act = act.hora.strftime("%H:%M")
+            nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
             medico_info = (
-                f" (A cargo: {act.medico_asignado.nombre} {act.medico_asignado.apellido})"
+                f" (A cargo: {nombre_med})"
                 if act.medico_asignado
                 else ""
             )
@@ -148,7 +149,11 @@ def build_whatsapp_message_semanal(
             mensaje += "   📋 *Actividades Médicas del Día:*\n"
             for idx, act in enumerate(actividades_dia, 1):
                 hora_act = act.hora.strftime("%H:%M")
-                med_info = f" (A cargo: {act.medico_asignado.nombre} {act.medico_asignado.apellido})" if act.medico_asignado else ""
+                if act.medico_asignado:
+                    nom_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
+                    med_info = f" (A cargo: {nom_med})"
+                else:
+                    med_info = ""
                 mensaje += f"      {idx}. [{hora_act}] {act.titulo}{med_info}"
                 if act.descripcion:
                     mensaje += f" - {act.descripcion}"

@@ -259,7 +259,7 @@ function poblarSelectsFormularios() {
     actMed.innerHTML = `<option value="">-- Sin médico asignado (Opcional) --</option>` +
         listaMedicosCache
             .filter(m => m.activo)
-            .map(m => `<option value="${m.id_medico}">${m.nombre} ${m.apellido} (${m.especialidad})</option>`)
+            .map(m => `<option value="${m.id_medico}">${(m.nombre + (m.apellido ? ' ' + m.apellido : '')).trim()} (${m.especialidad})</option>`)
             .join("");
 }
 
@@ -526,7 +526,7 @@ async function cargarActividades() {
             const horaStr = act.hora ? act.hora.slice(0, 5) : "";
 
             const medicoNombre = act.medico_asignado 
-                ? `${act.medico_asignado.nombre} ${act.medico_asignado.apellido} (${act.medico_asignado.especialidad})`
+                ? `${(act.medico_asignado.nombre + (act.medico_asignado.apellido ? ' ' + act.medico_asignado.apellido : '')).trim()} (${act.medico_asignado.especialidad})`
                 : "Sin personal médico específico asignado";
 
             return `
@@ -916,8 +916,8 @@ function renderizarListaMedicosModal() {
     cont.innerHTML = listaMedicosCache.map(m => `
         <div class="flex items-center justify-between p-3 rounded-xl border border-teal-200 bg-white">
             <div>
-                <div class="text-xs font-bold text-slate-900">${m.nombre} ${m.apellido}</div>
-                <div class="text-[11px] text-teal-700">${m.especialidad} &bull; ${m.telefono_whatsapp}</div>
+                <div class="text-xs font-bold text-slate-900">${(m.nombre + (m.apellido ? ' ' + m.apellido : '')).trim()}</div>
+                <div class="text-[11px] text-teal-700 font-medium">${m.especialidad}</div>
             </div>
             <div class="flex items-center space-x-2">
                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${m.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
@@ -937,9 +937,17 @@ async function handleCrearMedico(e) {
     e.preventDefault();
     const token = getToken();
     const nombre = document.getElementById("medNombre").value.trim();
-    const apellido = document.getElementById("medApellido").value.trim();
-    const telefono_whatsapp = document.getElementById("medTelefono").value.trim();
+    const apellido = (document.getElementById("medApellido")?.value || "").trim();
     const especialidad = document.getElementById("medEspecialidad").value.trim();
+
+    if (!nombre) {
+        alert("El nombre es obligatorio");
+        return;
+    }
+    if (!especialidad) {
+        alert("La especialidad es obligatoria");
+        return;
+    }
 
     try {
         const res = await fetch("/api/admin/medicos", {
@@ -948,7 +956,7 @@ async function handleCrearMedico(e) {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
             },
-            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, especialidad, activo: true })
+            body: JSON.stringify({ nombre, apellido, especialidad, activo: true })
         });
         if (res.ok) {
             document.getElementById("nuevoMedicoForm").reset();

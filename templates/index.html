@@ -434,10 +434,18 @@
             <form id="nuevoMedicoForm" onsubmit="handleCrearMedico(event)" class="bg-teal-50/50 p-4 rounded-xl border border-teal-200 space-y-3">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-teal-900">Registrar Personal Médico</h4>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input type="text" id="medNombre" required placeholder="Nombre (Ej: Dra. Andrea)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
-                    <input type="text" id="medApellido" required placeholder="Apellido (Ej: Silva)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
-                    <input type="text" id="medTelefono" required placeholder="WhatsApp (+56912345678)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
-                    <input type="text" id="medEspecialidad" required placeholder="Especialidad (Ej: Médico General, Enfermera)" class="px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nombre <span class="text-rose-500">*</span></label>
+                        <input type="text" id="medNombre" required placeholder="Ej: Dra. Andrea" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Apellido <span class="text-slate-400 font-normal">(opcional)</span></label>
+                        <input type="text" id="medApellido" placeholder="Ej: Silva (opcional)" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Especialidad <span class="text-rose-500">*</span></label>
+                        <input type="text" id="medEspecialidad" required placeholder="Ej: Médico General, Enfermera, Kinesiólogo" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    </div>
                 </div>
                 <div class="text-right">
                     <button type="submit" class="px-4 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-lg shadow-sm">

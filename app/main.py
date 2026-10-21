@@ -490,7 +490,20 @@ def crear_medico(
     current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
-    nuevo = PersonalMedico(**datos.model_dump())
+    nombre_limpio = datos.nombre.strip()
+    if not nombre_limpio:
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    especialidad_limpia = datos.especialidad.strip()
+    if not especialidad_limpia:
+        raise HTTPException(status_code=400, detail="La especialidad es obligatoria")
+
+    nuevo = PersonalMedico(
+        nombre=nombre_limpio,
+        apellido=(datos.apellido or "").strip(),
+        especialidad=especialidad_limpia,
+        telefono_whatsapp=(datos.telefono_whatsapp or "").strip(),
+        activo=True
+    )
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)

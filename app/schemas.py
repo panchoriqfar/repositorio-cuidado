@@ -80,9 +80,10 @@ class CuidadorResponse(BaseModel):
 # --- Esquemas de Personal Médico (Actividades y Visitas Opcionales) ---
 class PersonalMedicoBase(BaseModel):
     nombre: str
-    apellido: str
-    telefono_whatsapp: str = Field(..., description="Formato E.164, ej: +56912345678")
+    apellido: Optional[str] = ""
     especialidad: str = Field(..., description="Ej: Médico General, Enfermera Universitaria, Kinesiólogo")
+    telefono_whatsapp: Optional[str] = ""
+    mail: Optional[str] = None
     activo: bool = True
 
 class PersonalMedicoCreate(PersonalMedicoBase):
@@ -92,6 +93,7 @@ class PersonalMedicoUpdate(BaseModel):
     nombre: Optional[str] = None
     apellido: Optional[str] = None
     telefono_whatsapp: Optional[str] = None
+    mail: Optional[str] = None
     especialidad: Optional[str] = None
     activo: Optional[bool] = None
 

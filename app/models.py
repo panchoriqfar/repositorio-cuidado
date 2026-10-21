@@ -48,8 +48,8 @@ class PersonalMedico(Base):
 
     id_medico = Column(Integer, primary_key=True, index=True, autoincrement=True)
     nombre = Column(String(100), nullable=False)
-    apellido = Column(String(100), nullable=False)
-    telefono_whatsapp = Column(String(25), nullable=False)  # Formato E.164
+    apellido = Column(String(100), nullable=True, default="")
+    telefono_whatsapp = Column(String(25), nullable=True, default="")  # Opcional / interno
     especialidad = Column(String(100), nullable=False)      # ej: 'Médico General', 'Enfermera Jefe', 'Kinesiólogo'
     activo = Column(Boolean, default=True, nullable=False)
 

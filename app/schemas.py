@@ -213,3 +213,70 @@ class NotificacionEmailResponse(BaseModel):
     omitidos: int
     errores: int
     detalles: List[DetalleEnvioEmail]
+
+
+# --- Esquemas de Gestión de Medicamentos ---
+class MedicamentoHorarioBase(BaseModel):
+    dia: date
+    hora: time
+
+class MedicamentoHorarioCreate(BaseModel):
+    dia: Optional[date] = None  # Si es None, hereda dia_inicial
+    hora: time
+
+class MedicamentoHorarioResponse(BaseModel):
+    id: int
+    medicamento_id: int
+    dia: date
+    hora: time
+
+    class Config:
+        from_attributes = True
+
+class TratamientoMedicamentoBase(BaseModel):
+    personal_medico_id: int = Field(..., description="ID del profesional de personal médico")
+    nombre_medicamento: str = Field(..., min_length=1, description="Nombre y presentación del medicamento")
+    dia_inicial: date = Field(..., description="Fecha inicial del tratamiento")
+
+class TratamientoMedicamentoCreate(TratamientoMedicamentoBase):
+    horarios_iniciales: Optional[List[time]] = Field(
+        default=[],
+        description="Lista de horas para el día inicial (ej: ['08:00:00', '14:00:00', '20:00:00'])"
+    )
+    # Clonación o replicación dinámica:
+    duracion_dias: Optional[int] = Field(
+        default=None,
+        description="Cantidad de días consecutivos para clonar los horarios iniciales a partir del día inicial"
+    )
+    dias_a_clonar: Optional[int] = Field(
+        default=None,
+        description="Alias de duracion_dias para replicación dinámica de horarios"
+    )
+    fechas_adicionales: Optional[List[date]] = Field(
+        default=[],
+        description="Lista explícita de fechas adicionales donde replicar los horarios iniciales"
+    )
+    horarios: Optional[List[MedicamentoHorarioCreate]] = Field(
+        default=[],
+        description="Lista de horarios adicionales con día y hora personalizados"
+    )
+    horarios_dinamicos: Optional[List[MedicamentoHorarioCreate]] = Field(
+        default=[],
+        description="Alias de horarios para registrar nuevos días y horas dinámicamente"
+    )
+
+class ClonarHorariosRequest(BaseModel):
+    """Esquema para agregar o clonar nuevos días y horas a un tratamiento existente."""
+    dias_a_clonar: Optional[int] = Field(default=None, description="Número de días a extender")
+    fechas: Optional[List[date]] = Field(default=[], description="Fechas específicas adicionales")
+    horas: Optional[List[time]] = Field(default=[], description="Horas a programar (si vacío, clona horarios del día inicial)")
+    horarios_dinamicos: Optional[List[MedicamentoHorarioCreate]] = Field(default=[], description="Lista dinámica de día y hora")
+
+class TratamientoMedicamentoResponse(TratamientoMedicamentoBase):
+    id: int
+    personal_medico: Optional[PersonalMedicoResponse] = None
+    horarios: List[MedicamentoHorarioResponse] = []
+
+    class Config:
+        from_attributes = True
+

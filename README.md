@@ -48,7 +48,14 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
 - Asignación opcional a Personal Médico registrado (médicos, enfermeros, kinesiólogos, etc.).
 - Vinculación automática en las notificaciones diarias y semanales (WhatsApp y Email).
 
-### 7. Generación y Descarga de Imagen Semanal (Afiche Estilo Canva)
+### 7. Gestión de Medicamentos y Pautas Horarias
+- **Modelo de Tratamientos (`TratamientoMedicamento`)**: Registra la prescripción o indicación asociada a un profesional de la salud (`personal_medico`), indicando nombre del fármaco y fecha inicial.
+- **Horarios y Días (`MedicamentoHorario`)**: Almacena cada toma individual (`dia` y `hora`) vinculada al tratamiento con eliminación en cascada (`ON DELETE CASCADE`).
+- **Registro y Clonación Dinámica**: Permite registrar un tratamiento con múltiples horarios iniciales y replicarlos dinámicamente durante una cantidad de días (`duracion_dias`), fechas específicas o listas de horarios personalizados.
+- **Consulta de Pauta por Profesional**: Endpoint para consultar tratamientos y horarios filtrados por fecha (`GET /api/medicamentos/{personal_medico_id}`).
+- **Integración Automática con Notificaciones**: Los resúmenes diarios (WhatsApp y Correo Electrónico) incorporan automáticamente la lista detallada de medicamentos, días y horarios activos correspondientes a la jornada del turno de cada cuidador/a.
+
+### 8. Generación y Descarga de Imagen Semanal (Afiche Estilo Canva)
 - **Botón "Generar Imagen Semanal"**: Disponible en la barra de control de fecha superior y en la barra inferior al finalizar la asignación semanal de turnos.
 - **Renderizado en Alta Resolución (1600 &times; 1056 px)**:
   - Encabezado elegante con tipografía serif y caligráfica (*CALENDARIO SEMANAL / Planificación de Personal*).
@@ -97,6 +104,14 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
 - `GET /api/public/cuadrante`: Matriz semanal por bloques y días.
 - `POST /api/admin/asignaciones`: Asignar turno con rango horario (00:00 - 23:59) a cuidador(es).
 - `DELETE /api/admin/asignaciones/{id_asignacion}`: Desasignar turno.
+
+### Gestión de Medicamentos
+- `POST /api/medicamentos/`: Registrar tratamiento farmacológico con día inicial, múltiples horarios y opciones de clonación dinámica (por duración de días, fechas adicionales o lista de horarios dinámicos).
+- `GET /api/medicamentos/{personal_medico_id}`: Consultar pauta de medicamentos asignada por un profesional médico, con filtro opcional por fecha (`?fecha=YYYY-MM-DD`).
+- `GET /api/medicamentos/`: Listado general de tratamientos con filtros opcionales de fecha y personal médico.
+- `POST /api/medicamentos/{tratamiento_id}/horarios`: Replicar, clonar o incorporar nuevos días y horas a un tratamiento existente.
+- `DELETE /api/medicamentos/{tratamiento_id}`: Eliminar un tratamiento y todos sus horarios asociados en cascada.
+- `DELETE /api/medicamentos/horarios/{horario_id}`: Eliminar un horario de administración puntual.
 
 ### Notificaciones WhatsApp
 - `POST /api/admin/notificaciones/enviar-dia`: Dispara actualización diaria por WhatsApp para la fecha indicada.

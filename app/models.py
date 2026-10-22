@@ -53,8 +53,9 @@ class PersonalMedico(Base):
     especialidad = Column(String(100), nullable=False)      # ej: 'Médico General', 'Enfermera Jefe', 'Kinesiólogo'
     activo = Column(Boolean, default=True, nullable=False)
 
-    # Relaciones: Se le pueden asociar o no actividades médicas
+    # Relaciones: Se le pueden asociar o no actividades médicas y tratamientos de medicamentos
     actividades = relationship("ActividadMedica", back_populates="medico_asignado")
+    tratamientos = relationship("TratamientoMedicamento", back_populates="personal_medico", cascade="all, delete-orphan")
 
 
 class BloqueTurno(Base):
@@ -116,3 +117,44 @@ class ActividadMedica(Base):
 
     # Relaciones
     medico_asignado = relationship("PersonalMedico", back_populates="actividades")
+
+
+class TratamientoMedicamento(Base):
+    """
+    Tabla de Tratamientos de Medicamentos:
+    Registra el tratamiento indicado por o asignado a un personal médico,
+    con su día inicial y horarios de toma.
+    """
+    __tablename__ = "tratamiento_medicamentos"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    personal_medico_id = Column(Integer, ForeignKey("personal_medico.id_medico", ondelete="CASCADE"), nullable=False, index=True)
+    nombre_medicamento = Column(String(200), nullable=False)
+    dia_inicial = Column(Date, nullable=False, index=True)
+
+    # Relaciones
+    personal_medico = relationship("PersonalMedico", back_populates="tratamientos")
+    horarios = relationship(
+        "MedicamentoHorario",
+        back_populates="tratamiento",
+        cascade="all, delete-orphan",
+        order_by="MedicamentoHorario.dia, MedicamentoHorario.hora"
+    )
+
+
+class MedicamentoHorario(Base):
+    """
+    Tabla de Horarios de Medicamentos:
+    Días y horas específicas programadas para la administración del medicamento.
+    Eliminación en cascada vinculada al tratamiento.
+    """
+    __tablename__ = "medicamento_horarios"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    medicamento_id = Column(Integer, ForeignKey("tratamiento_medicamentos.id", ondelete="CASCADE"), nullable=False, index=True)
+    dia = Column(Date, nullable=False, index=True)
+    hora = Column(Time, nullable=False)
+
+    # Relaciones
+    tratamiento = relationship("TratamientoMedicamento", back_populates="horarios")
+

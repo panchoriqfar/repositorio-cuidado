@@ -10,8 +10,12 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 from app.database import engine, Base, get_db
-from app.models import Usuario, Cuidador, PersonalMedico, BloqueTurno, AsignacionTurno, ActividadMedica
+from app.models import (
+    Usuario, Cuidador, PersonalMedico, BloqueTurno,
+    AsignacionTurno, ActividadMedica, TratamientoMedicamento, MedicamentoHorario
+)
 from app import schemas, auth, whatsapp, email_service
+from sqlalchemy.orm import joinedload
 
 load_dotenv()
 
@@ -826,3 +830,293 @@ def enviar_email_semana_completa(
     """
     fecha_base = payload.fecha_base or date.today()
     return email_service.enviar_correos_semana_completa(fecha_base, db)
+
+
+# ==============================================================================
+# --- GESTIÓN DE MEDICAMENTOS ---
+# ==============================================================================
+
+@app.post(
+    "/api/medicamentos/",
+    response_model=schemas.TratamientoMedicamentoResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Medicamentos"]
+)
+def registrar_tratamiento_medicamento(
+    payload: schemas.TratamientoMedicamentoCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Registra un tratamiento de medicamento con su día inicial, múltiples horarios iniciales
+    y la opción de clonar/agregar nuevos días y horas de forma dinámica.
+    """
+    # 1. Verificar existencia del profesional de personal médico
+    medico = db.query(PersonalMedico).filter(PersonalMedico.id_medico == payload.personal_medico_id).first()
+    if not medico:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Personal médico con id {payload.personal_medico_id} no encontrado."
+        )
+
+    # 2. Instanciar tratamiento
+    nuevo_tratamiento = TratamientoMedicamento(
+        personal_medico_id=payload.personal_medico_id,
+        nombre_medicamento=payload.nombre_medicamento.strip(),
+        dia_inicial=payload.dia_inicial
+    )
+    db.add(nuevo_tratamiento)
+    db.flush()
+
+    # 3. Recopilar y clonar/agregar horarios dinámicamente sin duplicados
+    horarios_unicos = set()
+    lista_horarios: List[MedicamentoHorario] = []
+
+    # 3.1 Horarios iniciales en el día inicial
+    horas_base = list(payload.horarios_iniciales or [])
+    for hora in horas_base:
+        clave = (payload.dia_inicial, hora)
+        if clave not in horarios_unicos:
+            horarios_unicos.add(clave)
+            lista_horarios.append(
+                MedicamentoHorario(medicamento_id=nuevo_tratamiento.id, dia=payload.dia_inicial, hora=hora)
+            )
+
+    # 3.2 Clonar dinámicamente según cantidad de días (duracion_dias o dias_a_clonar)
+    total_dias = payload.duracion_dias or payload.dias_a_clonar
+    if total_dias and total_dias > 1 and horas_base:
+        for offset in range(1, total_dias):
+            dia_clonado = payload.dia_inicial + timedelta(days=offset)
+            for hora in horas_base:
+                clave = (dia_clonado, hora)
+                if clave not in horarios_unicos:
+                    horarios_unicos.add(clave)
+                    lista_horarios.append(
+                        MedicamentoHorario(medicamento_id=nuevo_tratamiento.id, dia=dia_clonado, hora=hora)
+                    )
+
+    # 3.3 Clonar a fechas adicionales específicas si fueron proporcionadas
+    if payload.fechas_adicionales and horas_base:
+        for fecha_adic in payload.fechas_adicionales:
+            for hora in horas_base:
+                clave = (fecha_adic, hora)
+                if clave not in horarios_unicos:
+                    horarios_unicos.add(clave)
+                    lista_horarios.append(
+                        MedicamentoHorario(medicamento_id=nuevo_tratamiento.id, dia=fecha_adic, hora=hora)
+                    )
+
+    # 3.4 Horarios dinámicos o personalizados explícitos (horarios / horarios_dinamicos)
+    dinamicos = (payload.horarios or []) + (payload.horarios_dinamicos or [])
+    for item in dinamicos:
+        dia_final = item.dia or payload.dia_inicial
+        clave = (dia_final, item.hora)
+        if clave not in horarios_unicos:
+            horarios_unicos.add(clave)
+            lista_horarios.append(
+                MedicamentoHorario(medicamento_id=nuevo_tratamiento.id, dia=dia_final, hora=item.hora)
+            )
+
+    if lista_horarios:
+        db.add_all(lista_horarios)
+
+    db.commit()
+    db.refresh(nuevo_tratamiento)
+    return nuevo_tratamiento
+
+
+@app.get(
+    "/api/medicamentos/{personal_medico_id}",
+    response_model=List[schemas.TratamientoMedicamentoResponse],
+    tags=["Medicamentos"]
+)
+def consultar_pauta_medicamentos(
+    personal_medico_id: int,
+    fecha: Optional[date] = Query(None, description="Filtrar por fecha específica (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint para consultar la pauta de medicamentos asignada a un cuidador/médico filtrada por fecha.
+    """
+    # 1. Validar existencia del personal médico
+    medico = db.query(PersonalMedico).filter(PersonalMedico.id_medico == personal_medico_id).first()
+    if not medico:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Personal médico con id {personal_medico_id} no encontrado."
+        )
+
+    # 2. Consultar tratamientos vinculados
+    tratamientos: List[TratamientoMedicamento] = (
+        db.query(TratamientoMedicamento)
+        .options(
+            joinedload(TratamientoMedicamento.personal_medico),
+            joinedload(TratamientoMedicamento.horarios)
+        )
+        .filter(TratamientoMedicamento.personal_medico_id == personal_medico_id)
+        .order_by(TratamientoMedicamento.dia_inicial.desc(), TratamientoMedicamento.id.desc())
+        .all()
+    )
+
+    # 3. Si se especifica filtro por fecha, seleccionar únicamente los horarios del día solicitado
+    if fecha is not None:
+        resultado_filtrado = []
+        for t in tratamientos:
+            horarios_dia = [h for h in t.horarios if h.dia == fecha]
+            if horarios_dia:
+                resultado_filtrado.append(
+                    schemas.TratamientoMedicamentoResponse(
+                        id=t.id,
+                        personal_medico_id=t.personal_medico_id,
+                        nombre_medicamento=t.nombre_medicamento,
+                        dia_inicial=t.dia_inicial,
+                        personal_medico=t.personal_medico,
+                        horarios=horarios_dia
+                    )
+                )
+        return resultado_filtrado
+
+    return tratamientos
+
+
+@app.get(
+    "/api/medicamentos/",
+    response_model=List[schemas.TratamientoMedicamentoResponse],
+    tags=["Medicamentos"]
+)
+def listar_todos_tratamientos(
+    fecha: Optional[date] = Query(None, description="Filtrar por fecha"),
+    personal_medico_id: Optional[int] = Query(None, description="Filtrar por personal médico"),
+    db: Session = Depends(get_db)
+):
+    """Listar tratamientos generales con filtros opcionales de fecha y personal médico."""
+    query = (
+        db.query(TratamientoMedicamento)
+        .options(
+            joinedload(TratamientoMedicamento.personal_medico),
+            joinedload(TratamientoMedicamento.horarios)
+        )
+    )
+    if personal_medico_id:
+        query = query.filter(TratamientoMedicamento.personal_medico_id == personal_medico_id)
+
+    tratamientos = query.order_by(TratamientoMedicamento.dia_inicial.desc()).all()
+
+    if fecha is not None:
+        resultado = []
+        for t in tratamientos:
+            horarios_dia = [h for h in t.horarios if h.dia == fecha]
+            if horarios_dia:
+                resultado.append(
+                    schemas.TratamientoMedicamentoResponse(
+                        id=t.id,
+                        personal_medico_id=t.personal_medico_id,
+                        nombre_medicamento=t.nombre_medicamento,
+                        dia_inicial=t.dia_inicial,
+                        personal_medico=t.personal_medico,
+                        horarios=horarios_dia
+                    )
+                )
+        return resultado
+
+    return tratamientos
+
+
+@app.post(
+    "/api/medicamentos/{tratamiento_id}/horarios",
+    response_model=schemas.TratamientoMedicamentoResponse,
+    tags=["Medicamentos"]
+)
+def clonar_o_agregar_horarios(
+    tratamiento_id: int,
+    payload: schemas.ClonarHorariosRequest,
+    db: Session = Depends(get_db)
+):
+    """Clonar o agregar nuevos días y horas a un tratamiento existente."""
+    tratamiento = (
+        db.query(TratamientoMedicamento)
+        .options(joinedload(TratamientoMedicamento.horarios))
+        .filter(TratamientoMedicamento.id == tratamiento_id)
+        .first()
+    )
+    if not tratamiento:
+        raise HTTPException(status_code=404, detail="Tratamiento no encontrado.")
+
+    existentes = {(h.dia, h.hora) for h in tratamiento.horarios}
+    nuevos: List[MedicamentoHorario] = []
+
+    # Determinar horas base a replicar
+    horas_base = list(payload.horas) if payload.horas else [h.hora for h in tratamiento.horarios if h.dia == tratamiento.dia_inicial]
+    if not horas_base and tratamiento.horarios:
+        horas_base = [tratamiento.horarios[0].hora]
+
+    # Clonar por cantidad de días a partir de la fecha más reciente registrada
+    if payload.dias_a_clonar and payload.dias_a_clonar > 0 and horas_base:
+        fecha_max = max((h.dia for h in tratamiento.horarios), default=tratamiento.dia_inicial)
+        for i in range(1, payload.dias_a_clonar + 1):
+            dia_destino = fecha_max + timedelta(days=i)
+            for hora in horas_base:
+                if (dia_destino, hora) not in existentes:
+                    existentes.add((dia_destino, hora))
+                    nuevos.append(MedicamentoHorario(medicamento_id=tratamiento_id, dia=dia_destino, hora=hora))
+
+    # Clonar a fechas específicas
+    if payload.fechas and horas_base:
+        for f in payload.fechas:
+            for hora in horas_base:
+                if (f, hora) not in existentes:
+                    existentes.add((f, hora))
+                    nuevos.append(MedicamentoHorario(medicamento_id=tratamiento_id, dia=f, hora=hora))
+
+    # Agregar dinámicos
+    for item in (payload.horarios_dinamicos or []):
+        dia_final = item.dia or tratamiento.dia_inicial
+        if (dia_final, item.hora) not in existentes:
+            existentes.add((dia_final, item.hora))
+            nuevos.append(MedicamentoHorario(medicamento_id=tratamiento_id, dia=dia_final, hora=item.hora))
+
+    if nuevos:
+        db.add_all(nuevos)
+        db.commit()
+        db.refresh(tratamiento)
+
+    return tratamiento
+
+
+@app.delete(
+    "/api/medicamentos/{tratamiento_id}",
+    tags=["Medicamentos"]
+)
+def eliminar_tratamiento_medicamento(
+    tratamiento_id: int,
+    db: Session = Depends(get_db)
+):
+    """Eliminar tratamiento de medicamento y todos sus horarios asociados en cascada."""
+    tratamiento = (
+        db.query(TratamientoMedicamento)
+        .options(joinedload(TratamientoMedicamento.horarios))
+        .filter(TratamientoMedicamento.id == tratamiento_id)
+        .first()
+    )
+    if not tratamiento:
+        raise HTTPException(status_code=404, detail="Tratamiento no encontrado.")
+    db.delete(tratamiento)
+    db.commit()
+    return {"message": "Tratamiento de medicamento y horarios eliminados exitosamente"}
+
+
+@app.delete(
+    "/api/medicamentos/horarios/{horario_id}",
+    tags=["Medicamentos"]
+)
+def eliminar_horario_medicamento(
+    horario_id: int,
+    db: Session = Depends(get_db)
+):
+    """Eliminar un horario puntual de toma de medicamento."""
+    horario = db.query(MedicamentoHorario).filter(MedicamentoHorario.id == horario_id).first()
+    if not horario:
+        raise HTTPException(status_code=404, detail="Horario de medicamento no encontrado.")
+    db.delete(horario)
+    db.commit()
+    return {"message": "Horario eliminado exitosamente"}
+

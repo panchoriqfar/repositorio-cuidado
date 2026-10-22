@@ -7,13 +7,13 @@ Utiliza HTTPS (puerto 443) a través del cliente oficial de Resend.
 
 import os
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, time, datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from dotenv import load_dotenv
 import resend
 
-from app.models import AsignacionTurno, ActividadMedica, Cuidador, BloqueTurno
+from app.models import AsignacionTurno, ActividadMedica, Cuidador, BloqueTurno, TratamientoMedicamento, MedicamentoHorario
 
 load_dotenv()
 
@@ -53,14 +53,25 @@ def format_nombre_cuidador(cuidador: Cuidador) -> str:
     return f"{cuidador.nombre.strip()} {apellido}".strip() if apellido else cuidador.nombre.strip()
 
 
+def esta_en_jornada(hora_med: time, hora_inicio: time, hora_fin: time) -> bool:
+    """Verifica si la hora del medicamento corresponde al rango de la jornada del turno."""
+    if hora_inicio <= hora_fin:
+        return hora_inicio <= hora_med <= hora_fin
+    else:
+        # Turno nocturno que cruza medianoche (ej: 21:00 a 07:00)
+        return hora_med >= hora_inicio or hora_med <= hora_fin
+
+
 def construir_contenido_diario(
     cuidador: Cuidador,
     asignacion: AsignacionTurno,
-    actividades: List[ActividadMedica]
+    actividades: List[ActividadMedica],
+    medicamentos: Optional[List[MedicamentoHorario]] = None
 ) -> Tuple[str, str, str]:
     """
     Construye el asunto, texto plano y HTML del correo diario
-    según el formato exacto requerido por el sistema.
+    según el formato requerido por el sistema, incluyendo lista detallada de
+    medicamentos, días y horarios activos correspondientes a la jornada del turno.
     """
     nombre = format_nombre_cuidador(cuidador)
     fecha_str = asignacion.fecha.strftime("%d/%m/%Y")
@@ -76,6 +87,25 @@ def construir_contenido_diario(
         ""
     ]
 
+    # Sección de Medicamentos de la Jornada
+    if medicamentos:
+        lineas_texto.append("Medicamentos a administrar en la jornada:")
+        for med in medicamentos:
+            h_med = med.hora.strftime("%H:%M")
+            d_med = med.dia.strftime("%d/%m/%Y")
+            n_med = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
+            medico_info = ""
+            if med.tratamiento and med.tratamiento.personal_medico:
+                pm = med.tratamiento.personal_medico
+                nombre_prof = f"{pm.nombre} {pm.apellido or ''}".strip()
+                medico_info = f" - Indicado por: {nombre_prof}"
+            lineas_texto.append(f"- A las {h_med} hrs: {n_med} (Día: {d_med}{medico_info}).")
+        lineas_texto.append("")
+    else:
+        lineas_texto.append("No hay administración de medicamentos programada para esta jornada.")
+        lineas_texto.append("")
+
+    # Sección de Actividades Médicas
     if actividades:
         lineas_texto.append("Tus actividades del día son:")
         for act in actividades:
@@ -89,7 +119,25 @@ def construir_contenido_diario(
 
     cuerpo_texto = "\n".join(lineas_texto)
 
-    # HTML elegante
+    # HTML elegante para medicamentos
+    medicamentos_html = ""
+    if medicamentos:
+        medicamentos_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
+        for med in medicamentos:
+            h_med = med.hora.strftime("%H:%M")
+            d_med = med.dia.strftime("%d/%m/%Y")
+            n_med = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
+            medico_info = ""
+            if med.tratamiento and med.tratamiento.personal_medico:
+                pm = med.tratamiento.personal_medico
+                nombre_prof = f"{pm.nombre} {pm.apellido or ''}".strip()
+                medico_info = f" &bull; Indicado por: {nombre_prof}"
+            medicamentos_html += f"<li>A las <strong>{h_med} hrs</strong>: <strong>{n_med}</strong> (Día: {d_med}{medico_info})</li>"
+        medicamentos_html += "</ul>"
+    else:
+        medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No hay administración de medicamentos programada para esta jornada.</p>"
+
+    # HTML elegante para actividades
     actividades_html = ""
     if actividades:
         actividades_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
@@ -120,7 +168,9 @@ def construir_contenido_diario(
                         Tu turno para el día de hoy <strong>{fecha_str}</strong> es en el bloque <strong>{bloque_nombre}</strong> (<strong>{hora_ini} - {hora_fin} hrs</strong>).
                     </p>
                 </div>
-                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">Tus actividades del día son:</h3>
+                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">💊 Pauta de Medicamentos de la Jornada:</h3>
+                {medicamentos_html}
+                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">📋 Tus actividades del día son:</h3>
                 {actividades_html}
             </div>
             <div style="background: #f1f5f9; padding: 12px 24px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -132,6 +182,10 @@ def construir_contenido_diario(
     """
 
     return subject, cuerpo_texto, cuerpo_html
+
+
+# Alias descriptivo para la preparación del resumen diario de correo
+preparar_resumen_diario_email = construir_contenido_diario
 
 
 def construir_contenido_semanal(
@@ -265,7 +319,8 @@ def enviar_email_via_resend(destinatario: str, asunto: str, texto: str, html: st
 
 def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
     """
-    Envía notificación diaria vía Resend API (HTTP) a los cuidadores en turno hoy.
+    Envía notificación diaria vía Resend API (HTTP) a los cuidadores en turno hoy,
+    incluyendo pauta de medicamentos y actividades de la jornada.
     """
     asignaciones: List[AsignacionTurno] = (
         db.query(AsignacionTurno)
@@ -279,6 +334,15 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
         db.query(ActividadMedica)
         .filter(ActividadMedica.fecha == fecha_objetivo)
         .order_by(ActividadMedica.hora.asc())
+        .all()
+    )
+
+    medicamentos_dia: List[MedicamentoHorario] = (
+        db.query(MedicamentoHorario)
+        .join(TratamientoMedicamento)
+        .options(joinedload(MedicamentoHorario.tratamiento).joinedload(TratamientoMedicamento.personal_medico))
+        .filter(MedicamentoHorario.dia == fecha_objetivo)
+        .order_by(MedicamentoHorario.hora.asc())
         .all()
     )
 
@@ -301,6 +365,7 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
 
     for cid, lista in asigs_por_cuidador.items():
         cuid = lista[0].cuidador
+        asig_principal = lista[0]
         nombre = format_nombre_cuidador(cuid)
 
         # 1. Validar que tenga correo
@@ -315,9 +380,13 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
             })
             continue
 
-        # 2. Construir y enviar vía Resend HTTP API
+        # 2. Filtrar medicamentos para la jornada del turno
+        meds_turno = [m for m in medicamentos_dia if esta_en_jornada(m.hora, asig_principal.hora_inicio, asig_principal.hora_fin)]
+        meds_a_notificar = meds_turno if meds_turno else medicamentos_dia
+
+        # 3. Construir y enviar vía Resend HTTP API
         try:
-            subject, text, html = construir_contenido_diario(cuid, lista[0], actividades_dia)
+            subject, text, html = construir_contenido_diario(cuid, asig_principal, actividades_dia, meds_a_notificar)
             resend_resp = enviar_email_via_resend(cuid.mail, subject, text, html)
             resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
             logger.info(f"Correo diario enviado vía Resend a {cuid.mail}. ID: {resp_id}")

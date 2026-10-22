@@ -8,7 +8,9 @@ let cuadranteData = null;
 let listaCuidadoresCache = [];
 let listaMedicosCache = [];
 let listaBloquesCache = [];
+let listaActividadesCache = [];
 let currentUserProfile = null;
+let canvasPosterGlobal = null;
 
 // Inicialización
 document.addEventListener("DOMContentLoaded", async () => {
@@ -507,6 +509,7 @@ async function cargarActividades() {
         const res = await fetch(`/api/public/actividades-semana?fecha_base=${fechaIso}`);
         if (!res.ok) throw new Error("Error obteniendo actividades");
         const actividades = await res.json();
+        listaActividadesCache = Array.isArray(actividades) ? actividades : [];
 
         if (actividades.length === 0) {
             cont.innerHTML = `
@@ -1648,3 +1651,929 @@ async function ejecutarEnvioCorreoSemanal() {
         }
     }
 }
+
+
+// ============================================================================
+// --- MÓDULO DE GENERACIÓN DE IMAGEN DEL HORARIO SEMANAL (ESTILO AFICHE CANVA) ---
+// ============================================================================
+
+const PALETAS_DIAS = [
+    { bg: "#E8DEF2", border: "#D5C4E5", fg: "#74528C", name: "LUNES" },
+    { bg: "#DCE7DB", border: "#C2D7C0", fg: "#537950", name: "MARTES" },
+    { bg: "#FCE2D6", border: "#F6C1AC", fg: "#B66447", name: "MIÉRCOLES" },
+    { bg: "#D5E6E9", border: "#B5D6DC", fg: "#3F7580", name: "JUEVES" },
+    { bg: "#F8DFE4", border: "#F0BCC6", fg: "#A44C60", name: "VIERNES" },
+    { bg: "#F5E8D4", border: "#E6CFAA", fg: "#9D7033", name: "SÁBADO" },
+    { bg: "#DEE8DD", border: "#C4D6C2", fg: "#5B7B59", name: "DOMINGO" }
+];
+
+/**
+ * Abre el modal para visualizar y descargar la imagen del horario semanal
+ */
+async function abrirModalGenerarImagen() {
+    const modal = document.getElementById("modalGenerarImagen");
+    const spinner = document.getElementById("imagenCargandoSpinner");
+    const preview = document.getElementById("previewImagenHorario");
+    const textarea = document.getElementById("textoNotasPostIt");
+
+    if (!modal) return;
+    modal.classList.remove("hidden");
+    spinner.classList.remove("hidden");
+    preview.classList.add("hidden");
+
+    // Asegurar que existan datos del cuadrante
+    if (!cuadranteData) {
+        try {
+            await cargarCuadrante();
+        } catch (e) {
+            console.error("Error al cargar cuadrante para imagen:", e);
+        }
+    }
+
+    // Asegurar que existan actividades de la semana
+    if (!listaActividadesCache || listaActividadesCache.length === 0) {
+        try {
+            const fechaIso = formatDateIso(fechaActual);
+            const res = await fetch(`/api/public/actividades-semana?fecha_base=${fechaIso}`);
+            if (res.ok) {
+                listaActividadesCache = await res.json();
+            }
+        } catch (e) {
+            console.warn("No se pudieron cargar actividades para el post-it:", e);
+        }
+    }
+
+    // Cargar notas predeterminadas de la semana
+    if (textarea) {
+        textarea.value = construirTextoNotasSemanales();
+    }
+
+    // Generar imagen
+    await regenerarImagenConNotas();
+}
+
+/**
+ * Cierra el modal de imagen
+ */
+function cerrarModalGenerarImagen() {
+    const modal = document.getElementById("modalGenerarImagen");
+    if (modal) modal.classList.add("hidden");
+}
+
+/**
+ * Construye el texto en formato bullet points para el post-it amarillo
+ */
+function construirTextoNotasSemanales() {
+    if (!listaActividadesCache || listaActividadesCache.length === 0) {
+        return "• Sin actividades médicas programadas para esta semana.";
+    }
+
+    return listaActividadesCache.map(act => {
+        const fechaObj = new Date(act.fecha + "T00:00:00");
+        const diaNum = String(fechaObj.getDate()).padStart(2, "0");
+        const mesNum = String(fechaObj.getMonth() + 1).padStart(2, "0");
+        const horaStr = act.hora ? act.hora.slice(0, 5) + "hrs" : "";
+        let medicoStr = "";
+        if (act.medico_asignado) {
+            const nomMed = (act.medico_asignado.nombre + (act.medico_asignado.apellido ? " " + act.medico_asignado.apellido : "")).trim();
+            medicoStr = ` (A cargo: ${nomMed})`;
+        }
+        let linea = `• ${diaNum}/${mesNum} ${act.titulo}`;
+        if (horaStr) linea += ` ${horaStr}`;
+        if (act.descripcion) linea += ` - ${act.descripcion}`;
+        if (medicoStr) linea += medicoStr;
+        return linea;
+    }).join("\n");
+}
+
+/**
+ * Dibuja o redibuja el poster en el canvas y actualiza la vista previa
+ */
+async function regenerarImagenConNotas() {
+    const spinner = document.getElementById("imagenCargandoSpinner");
+    const preview = document.getElementById("previewImagenHorario");
+    const textarea = document.getElementById("textoNotasPostIt");
+
+    if (spinner) spinner.classList.remove("hidden");
+    if (preview) preview.classList.add("hidden");
+
+    // Esperar a que las fuentes web estén listas para evitar fallos tipográficos
+    try {
+        if (document.fonts) {
+            await document.fonts.ready;
+        }
+    } catch (e) {
+        console.warn("document.fonts.ready:", e);
+    }
+
+    const notasTexto = textarea ? textarea.value : construirTextoNotasSemanales();
+    canvasPosterGlobal = dibujarPosterSemanal(cuadranteData, notasTexto);
+
+    if (canvasPosterGlobal) {
+        const dataUrl = canvasPosterGlobal.toDataURL("image/png");
+        if (preview) {
+            preview.src = dataUrl;
+            preview.classList.remove("hidden");
+        }
+    }
+
+    if (spinner) spinner.classList.add("hidden");
+}
+
+/**
+ * Función principal de dibujo en Canvas HTML5 (1600 x 1056 px)
+ */
+function dibujarPosterSemanal(data, notasTexto) {
+    const width = 1600;
+    const height = 1056;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    // 1. Fondo suave papel cálido
+    ctx.fillStyle = "#FCFAF8";
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Acuarela y ramitas decorativas en esquina inferior derecha
+    dibujarAcuarelaYBotánicaFondo(ctx, width, height);
+
+    // 3. Encabezado principal: "✦ CALENDARIO SEMANAL ✦"
+    const goldColor = "#C5A059";
+    const darkNavy = "#1E293B";
+    const scriptGold = "#C59B6C";
+
+    // Líneas doradas laterales del encabezado
+    ctx.strokeStyle = goldColor;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(110, 48);
+    ctx.lineTo(365, 48);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(1235, 48);
+    ctx.lineTo(1490, 48);
+    ctx.stroke();
+
+    // Estrellas / Diamantes ✦
+    dibujarEstrellaDiamante(ctx, 390, 48, 12, goldColor);
+    dibujarEstrellaDiamante(ctx, 1210, 48, 12, goldColor);
+
+    // Título en fuente Serif
+    ctx.save();
+    ctx.fillStyle = darkNavy;
+    ctx.font = "700 42px 'Cinzel', 'Playfair Display', 'Georgia', serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (ctx.letterSpacing !== undefined) {
+        ctx.letterSpacing = "6px";
+    }
+    ctx.fillText("CALENDARIO SEMANAL", 800, 48);
+    ctx.restore();
+
+    // Subtítulo en caligrafía script elegante: "Planificación de Personal"
+    ctx.save();
+    ctx.fillStyle = scriptGold;
+    ctx.font = "italic 600 38px 'Dancing Script', 'Caveat', cursive";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Planificación de Personal", 800, 98);
+    ctx.restore();
+
+    // 4. Mapeo de bloques desde cuadranteData
+    const bloques = (data && data.bloques) || [];
+    const bloqueAM = bloques.find(b => (b.codigo_bloque || "").toUpperCase() === "AM" || (b.nombre_bloque || "").toUpperCase().includes("AM"));
+    const bloquesPM = bloques.filter(b => {
+        const cod = (b.codigo_bloque || "").toUpperCase();
+        const nom = (b.nombre_bloque || "").toUpperCase();
+        return (cod.startsWith("PM") || nom.includes("PM")) && cod !== "AM" && cod !== "N";
+    });
+    const bloqueN = bloques.find(b => (b.codigo_bloque || "").toUpperCase() === "N" || (b.nombre_bloque || "").toUpperCase().includes("NOCTURN"));
+
+    const diasList = (data && data.dias) || [];
+    const matriz = (data && data.matriz) || {};
+
+    const leftMargin = 38;
+    const colGap = 16;
+    const colWidth = 204;
+
+    // 5. Dibujar las 7 Columnas de Lunes a Domingo
+    for (let i = 0; i < 7; i++) {
+        const colX = leftMargin + i * (colWidth + colGap);
+        const colCx = colX + colWidth / 2;
+        const paleta = PALETAS_DIAS[i % PALETAS_DIAS.length];
+        const diaInfo = diasList[i] || {};
+
+        // Fecha DD/MM
+        let fechaStr = "";
+        let diaNombre = paleta.name;
+        if (diaInfo.fecha) {
+            const p = diaInfo.fecha.split("-");
+            if (p.length === 3) {
+                fechaStr = `${parseInt(p[2], 10)}/${parseInt(p[1], 10)}`;
+            }
+        }
+        if (diaInfo.nombre) {
+            diaNombre = diaInfo.nombre.toUpperCase();
+        }
+
+        // --- ENCABEZADO DE LA COLUMNA ---
+        // Óvalo pastel a la izquierda con ramita botánica
+        const ovalCx = colX + 44;
+        const ovalCy = 196;
+        ctx.save();
+        ctx.fillStyle = paleta.bg;
+        ctx.beginPath();
+        ctx.ellipse(ovalCx, ovalCy, 27, 43, 0, 0, Math.PI * 2);
+        ctx.fill();
+        dibujarRamitaBotanica(ctx, ovalCx, ovalCy, paleta.fg);
+        ctx.restore();
+
+        // Nombre del día a la derecha del óvalo
+        const dayRx = colX + 130;
+        ctx.save();
+        ctx.fillStyle = "#334155";
+        ctx.font = "800 15px 'Inter', -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(diaNombre, dayRx, 166);
+
+        // Línea divisoria dorada sutil
+        ctx.strokeStyle = "#D8C29D";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(dayRx - 28, 186);
+        ctx.lineTo(dayRx + 28, 186);
+        ctx.stroke();
+
+        // Círculo / Medallón con la fecha
+        const dateCy = 230;
+        ctx.fillStyle = "#FFFFFF";
+        ctx.strokeStyle = "#D8C29D";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.ellipse(dayRx, dateCy, 26, 24, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#0F172A";
+        ctx.font = "700 17px 'Inter', -apple-system, sans-serif";
+        ctx.fillText(fechaStr || `${19 + i}/10`, dayRx, dateCy + 1);
+        ctx.restore();
+
+        // --- RECOPILACIÓN DE ASIGNACIONES POR TURNO ---
+        const fIso = diaInfo.fecha;
+
+        // Turno AM
+        let asigsAM = [];
+        if (bloqueAM && fIso && matriz[bloqueAM.id_bloque] && matriz[bloqueAM.id_bloque][fIso]) {
+            asigsAM = matriz[bloqueAM.id_bloque][fIso];
+        }
+
+        // Turnos PM
+        let pmShifts = [];
+        bloquesPM.forEach(b => {
+            if (fIso && matriz[b.id_bloque] && matriz[b.id_bloque][fIso]) {
+                const as = matriz[b.id_bloque][fIso];
+                if (as.length > 0) {
+                    const timeTxt = as[0].horario_texto ? as[0].horario_texto.replace(" - ", "/ ") : "PM";
+                    const namesTxt = as.map(a => a.cuidador_nombre).join(" + ");
+                    pmShifts.push({ time: timeTxt, names: namesTxt });
+                }
+            }
+        });
+
+        // Turno N (Nocturno)
+        let asigsN = [];
+        if (bloqueN && fIso && matriz[bloqueN.id_bloque] && matriz[bloqueN.id_bloque][fIso]) {
+            asigsN = matriz[bloqueN.id_bloque][fIso];
+        }
+
+        // --- TARJETA 1: AM (Y: 295, Alto: 152) ---
+        const amY = 295;
+        const amH = 152;
+        dibujarCajaTarjeta(ctx, colX, amY, colWidth, amH);
+        dibujarPastillaTurno(ctx, colCx, amY + 22, "AM", paleta.bg, paleta.fg);
+        dibujarIconoSol(ctx, colX + 34, amY + 86, "#D09B59");
+
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const amCenterContentX = colX + 116;
+
+        if (asigsAM.length > 0) {
+            const hText = asigsAM[0].horario_texto || "10:00 - 14:30";
+            ctx.fillStyle = "#0F172A";
+            ctx.font = "700 13px 'Inter', sans-serif";
+            ctx.fillText(hText, amCenterContentX, amY + 70);
+
+            const nText = asigsAM.map(a => a.cuidador_nombre).join(" + ");
+            ctx.font = "700 16px 'Inter', sans-serif";
+            dibujarTextoConSalto(ctx, nText, amCenterContentX, amY + 95, colWidth - 75, 18);
+        } else {
+            ctx.fillStyle = "#94A3B8";
+            ctx.font = "600 18px 'Inter', sans-serif";
+            ctx.fillText("—", amCenterContentX, amY + 86);
+        }
+        ctx.restore();
+
+        // --- TARJETA 2: PM (Y: 462, Alto: 156) ---
+        const pmY = 462;
+        const pmH = 156;
+        dibujarCajaTarjeta(ctx, colX, pmY, colWidth, pmH);
+        dibujarPastillaTurno(ctx, colCx, pmY + 22, "PM", paleta.bg, paleta.fg);
+        dibujarIconoAtardecer(ctx, colX + 34, pmY + 90, "#D09B59");
+
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const pmCenterContentX = colX + 116;
+
+        if (pmShifts.length === 1) {
+            ctx.fillStyle = "#0F172A";
+            ctx.font = "700 13px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[0].time, pmCenterContentX, pmY + 70);
+
+            ctx.font = "700 16px 'Inter', sans-serif";
+            dibujarTextoConSalto(ctx, pmShifts[0].names, pmCenterContentX, pmY + 96, colWidth - 75, 18);
+        } else if (pmShifts.length >= 2) {
+            // Múltiples turnos de tarde (PM1 y PM2)
+            ctx.fillStyle = "#0F172A";
+            ctx.font = "700 12px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[0].time, pmCenterContentX, pmY + 56);
+            ctx.font = "700 14px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[0].names, pmCenterContentX, pmY + 74);
+
+            ctx.font = "700 12px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[1].time, pmCenterContentX, pmY + 102);
+            ctx.font = "700 14px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[1].names, pmCenterContentX, pmY + 120);
+        } else {
+            ctx.fillStyle = "#94A3B8";
+            ctx.font = "600 18px 'Inter', sans-serif";
+            ctx.fillText("—", pmCenterContentX, pmY + 90);
+        }
+        ctx.restore();
+
+        // --- TARJETA 3: N / Nocturno (Y: 632, Alto: 122) ---
+        const nY = 632;
+        const nH = 122;
+        dibujarCajaTarjeta(ctx, colX, nY, colWidth, nH);
+        dibujarPastillaTurno(ctx, colCx, nY + 22, "N", "#1E293B", "#FFFFFF");
+        dibujarIconoLuna(ctx, colX + 34, nY + 70, "#1E293B");
+
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const nCenterContentX = colX + 116;
+
+        if (asigsN.length > 0) {
+            const hText = asigsN[0].horario_texto ? asigsN[0].horario_texto.replace(" - ", "/") : "21:00/10:00";
+            ctx.fillStyle = "#0F172A";
+            ctx.font = "700 13px 'Inter', sans-serif";
+            ctx.fillText(hText, nCenterContentX, nY + 56);
+
+            const nText = asigsN.map(a => a.cuidador_nombre).join(" + ");
+            ctx.font = "700 16px 'Inter', sans-serif";
+            dibujarTextoConSalto(ctx, nText, nCenterContentX, nY + 84, colWidth - 75, 18);
+        } else {
+            ctx.fillStyle = "#94A3B8";
+            ctx.font = "600 18px 'Inter', sans-serif";
+            ctx.fillText("—", nCenterContentX, nY + 70);
+        }
+        ctx.restore();
+    }
+
+    // 6. SECCIÓN INFERIOR
+    // 6.1 Emblema circular en la esquina inferior izquierda
+    dibujarEmblemaCuidados(ctx, 136, 915);
+
+    // 6.2 Post-It Amarillo con Actividades Médicas
+    dibujarPostItActividades(ctx, 360, 785, 590, 235, notasTexto);
+
+    return canvas;
+}
+
+/**
+ * Dibuja un diamante / estrella de 4 puntas ✦
+ */
+function dibujarEstrellaDiamante(ctx, cx, cy, size, color) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - size);
+    ctx.quadraticCurveTo(cx, cy, cx + size * 0.7, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy + size);
+    ctx.quadraticCurveTo(cx, cy, cx - size * 0.7, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy - size);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
+/**
+ * Dibuja una ramita botánica con hojas estilizadas orgánicas
+ */
+function dibujarRamitaBotanica(ctx, cx, cy, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2.0;
+    ctx.lineCap = "round";
+
+    // Tallo central curvado
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 28);
+    ctx.quadraticCurveTo(cx - 1, cy, cx + 2, cy - 26);
+    ctx.stroke();
+
+    // Hojas laterales
+    const hojas = [
+        { ox: -13, oy: -17, rot: -0.65, rx: 9.5, ry: 4.5 },
+        { ox: 13, oy: -10, rot: 0.65, rx: 9.5, ry: 4.5 },
+        { ox: -14, oy: -2, rot: -0.55, rx: 10, ry: 5 },
+        { ox: 14, oy: 6, rot: 0.55, rx: 10, ry: 5 },
+        { ox: -13, oy: 13, rot: -0.45, rx: 9, ry: 4.5 },
+        { ox: 13, oy: 20, rot: 0.45, rx: 8.5, ry: 4 },
+        { ox: 2, oy: -28, rot: 0.05, rx: 7.5, ry: 3.5 }
+    ];
+
+    hojas.forEach(h => {
+        ctx.save();
+        ctx.translate(cx + h.ox * 0.85, cy + h.oy);
+        ctx.rotate(h.rot);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, h.rx, h.ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    });
+
+    ctx.restore();
+}
+
+/**
+ * Dibuja el marco de la tarjeta de turno
+ */
+function dibujarCajaTarjeta(ctx, x, y, w, h) {
+    ctx.save();
+    ctx.fillStyle = "#FFFFFF";
+    ctx.strokeStyle = "rgba(203, 213, 225, 0.75)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(x, y, w, h, 16);
+    } else {
+        ctx.rect(x, y, w, h);
+    }
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+}
+
+/**
+ * Dibuja la píldora / etiqueta del turno ("AM", "PM", "N")
+ */
+function dibujarPastillaTurno(ctx, cx, cy, texto, bg, fg) {
+    ctx.save();
+    const w = 68;
+    const h = 24;
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 12);
+    } else {
+        ctx.rect(cx - w / 2, cy - h / 2, w, h);
+    }
+    ctx.fill();
+
+    ctx.fillStyle = fg;
+    ctx.font = "800 12.5px 'Inter', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(texto, cx, cy);
+    ctx.restore();
+}
+
+/**
+ * Dibuja el icono de sol matutino
+ */
+function dibujarIconoSol(ctx, cx, cy, color) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 7.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (let a = 0; a < 360; a += 45) {
+        const rad = (a * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(rad) * 11, cy + Math.sin(rad) * 11);
+        ctx.lineTo(cx + Math.cos(rad) * 16, cy + Math.sin(rad) * 16);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+/**
+ * Dibuja el icono de atardecer / puesta de sol
+ */
+function dibujarIconoAtardecer(ctx, cx, cy, color) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+
+    // Línea de horizonte
+    ctx.beginPath();
+    ctx.moveTo(cx - 15, cy + 3);
+    ctx.lineTo(cx + 15, cy + 3);
+    ctx.stroke();
+
+    // Semicírculo sol hundiéndose
+    ctx.beginPath();
+    ctx.arc(cx, cy + 3, 9, Math.PI, 0);
+    ctx.fill();
+
+    // Rayos superiores
+    [-55, -25, 0, 25, 55].forEach(deg => {
+        const rad = ((deg - 90) * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(rad) * 12, cy + 3 + Math.sin(rad) * 12);
+        ctx.lineTo(cx + Math.cos(rad) * 16, cy + 3 + Math.sin(rad) * 16);
+        ctx.stroke();
+    });
+
+    // Ondulación de agua debajo
+    ctx.beginPath();
+    ctx.moveTo(cx - 10, cy + 7);
+    ctx.lineTo(cx + 10, cy + 7);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+/**
+ * Dibuja el icono de luna nocturna en medallón marino
+ */
+function dibujarIconoLuna(ctx, cx, cy, navyColor) {
+    ctx.save();
+    // Medallón marino
+    ctx.fillStyle = navyColor;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Media luna blanca
+    ctx.fillStyle = "#FFFFFF";
+    ctx.beginPath();
+    ctx.arc(cx - 1, cy, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = navyColor;
+    ctx.beginPath();
+    ctx.arc(cx + 3.5, cy - 2, 7.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+/**
+ * Dibuja texto con salto de línea automático si supera el ancho máximo
+ */
+function dibujarTextoConSalto(ctx, texto, cx, cy, maxW, lineH) {
+    const palabras = (texto || "").split(" ");
+    let lineas = [];
+    let curLine = "";
+
+    for (const p of palabras) {
+        const test = curLine ? curLine + " " + p : p;
+        if (ctx.measureText(test).width > maxW && curLine) {
+            lineas.push(curLine);
+            curLine = p;
+        } else {
+            curLine = test;
+        }
+    }
+    if (curLine) lineas.push(curLine);
+
+    if (lineas.length === 1) {
+        ctx.fillText(lineas[0], cx, cy);
+    } else if (lineas.length === 2) {
+        ctx.fillText(lineas[0], cx, cy - lineH / 2);
+        ctx.fillText(lineas[1], cx, cy + lineH / 2);
+    } else {
+        // Reducir temporalmente tamaño si son más líneas
+        ctx.save();
+        ctx.font = "700 13px 'Inter', sans-serif";
+        let startY = cy - ((lineas.length - 1) * (lineH - 4)) / 2;
+        lineas.forEach(l => {
+            ctx.fillText(l, cx, startY);
+            startY += (lineH - 4);
+        });
+        ctx.restore();
+    }
+}
+
+/**
+ * Dibuja el emblema circular en la esquina inferior izquierda
+ */
+function dibujarEmblemaCuidados(ctx, cx, cy) {
+    ctx.save();
+    // Círculo azul marino principal
+    ctx.fillStyle = "#15243B";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 54, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Anillos dorados concéntricos
+    ctx.strokeStyle = "#D4AF37";
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 48, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(212, 175, 55, 0.4)";
+    ctx.lineWidth = 1.0;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 43, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Ramitas de laurel doradas en los costados
+    ctx.fillStyle = "#C5A059";
+    for (let i = -3; i <= 3; i++) {
+        const angleL = Math.PI - 0.25 - (i * 0.24);
+        const lx = cx + Math.cos(angleL) * 58;
+        const ly = cy + Math.sin(angleL) * 58;
+        ctx.save();
+        ctx.translate(lx, ly);
+        ctx.rotate(angleL + 0.5);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // 3 Figuras humanas estilizadas en dorado (cuidador / familia)
+    ctx.fillStyle = "#D4AF37";
+    // Cabezas
+    ctx.beginPath();
+    ctx.arc(cx - 15, cy - 9, 5.5, 0, Math.PI * 2);
+    ctx.arc(cx, cy - 13, 7, 0, Math.PI * 2);
+    ctx.arc(cx + 15, cy - 9, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cuerpos
+    ctx.beginPath();
+    ctx.arc(cx - 15, cy + 10, 10, Math.PI, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy + 9, 13, Math.PI, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + 15, cy + 10, 10, Math.PI, 0);
+    ctx.fill();
+
+    // Medallón pequeño inferior con corazón blanco
+    ctx.fillStyle = "#C5A059";
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 42, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#FFFFFF";
+    const hx = cx, hy = cy + 41;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + 4);
+    ctx.bezierCurveTo(hx - 5, hy, hx - 5, hy - 4, hx, hy - 2);
+    ctx.bezierCurveTo(hx + 5, hy - 4, hx + 5, hy, hx, hy + 4);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+/**
+ * Dibuja el post-it amarillo con notas y cinta adhesiva en las esquinas
+ */
+function dibujarPostItActividades(ctx, x, y, width, height, notasTexto) {
+    ctx.save();
+    ctx.translate(x + width / 2, y + height / 2);
+    ctx.rotate(-1.2 * Math.PI / 180);
+
+    // Sombra suave realista
+    ctx.shadowColor = "rgba(0, 0, 0, 0.12)";
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetX = 3;
+    ctx.shadowOffsetY = 6;
+
+    // Cuerpo del post-it con degradado amarillo suave
+    const grad = ctx.createLinearGradient(-width / 2, -height / 2, width / 2, height / 2);
+    grad.addColorStop(0, "#FFF9CE");
+    grad.addColorStop(1, "#FFEFA2");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(-width / 2, -height / 2, width, height, 6);
+    } else {
+        ctx.rect(-width / 2, -height / 2, width, height);
+    }
+    ctx.fill();
+
+    ctx.shadowColor = "transparent";
+
+    // Cinta adhesiva / Washi tape esquina superior izquierda
+    ctx.save();
+    ctx.translate(-width / 2 + 28, -height / 2 + 8);
+    ctx.rotate(-32 * Math.PI / 180);
+    ctx.fillStyle = "rgba(245, 222, 145, 0.82)";
+    ctx.fillRect(-38, -13, 76, 26);
+    ctx.strokeStyle = "rgba(220, 195, 120, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-38, -13, 76, 26);
+    ctx.restore();
+
+    // Cinta adhesiva / Washi tape esquina inferior derecha
+    ctx.save();
+    ctx.translate(width / 2 - 24, height / 2 - 8);
+    ctx.rotate(-38 * Math.PI / 180);
+    ctx.fillStyle = "rgba(245, 222, 145, 0.82)";
+    ctx.fillRect(-38, -13, 76, 26);
+    ctx.strokeStyle = "rgba(220, 195, 120, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-38, -13, 76, 26);
+    ctx.restore();
+
+    // Texto de actividades / notas dentro del post-it
+    ctx.fillStyle = "#1A202C";
+    ctx.font = "600 15px 'Inter', -apple-system, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+
+    const paddingX = -width / 2 + 35;
+    const maxTextW = width - 70;
+    let currentY = -height / 2 + 24;
+
+    const lineas = (notasTexto || "").split("\n");
+    for (const rawLine of lineas) {
+        const clean = rawLine.trim();
+        if (!clean) {
+            currentY += 6;
+            continue;
+        }
+
+        const palabras = clean.split(" ");
+        let cur = "";
+        for (const w of palabras) {
+            const test = cur ? cur + " " + w : w;
+            if (ctx.measureText(test).width > maxTextW && cur) {
+                ctx.fillText(cur, paddingX, currentY);
+                currentY += 23;
+                cur = "   " + w;
+            } else {
+                cur = test;
+            }
+        }
+        if (cur) {
+            ctx.fillText(cur, paddingX, currentY);
+            currentY += 25;
+        }
+    }
+
+    ctx.restore();
+}
+
+/**
+ * Dibuja la acuarela y ramitas botánicas doradas en la esquina inferior derecha
+ */
+function dibujarAcuarelaYBotánicaFondo(ctx, width, height) {
+    ctx.save();
+    // Lavados de acuarela celeste suave y arena
+    const grad1 = ctx.createRadialGradient(width - 150, height - 100, 20, width - 150, height - 100, 240);
+    grad1.addColorStop(0, "rgba(202, 225, 237, 0.55)");
+    grad1.addColorStop(0.6, "rgba(224, 238, 245, 0.25)");
+    grad1.addColorStop(1, "rgba(252, 250, 247, 0)");
+    ctx.fillStyle = grad1;
+    ctx.fillRect(width - 390, height - 340, 390, 340);
+
+    const grad2 = ctx.createRadialGradient(width - 200, height - 70, 10, width - 200, height - 70, 190);
+    grad2.addColorStop(0, "rgba(242, 232, 215, 0.5)");
+    grad2.addColorStop(0.7, "rgba(247, 241, 230, 0.2)");
+    grad2.addColorStop(1, "rgba(252, 250, 247, 0)");
+    ctx.fillStyle = grad2;
+    ctx.fillRect(width - 390, height - 260, 390, 260);
+
+    // Tallo floral botánico dorado ascendente
+    ctx.strokeStyle = "#C5A059";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(width - 20, height);
+    ctx.quadraticCurveTo(width - 110, height - 120, width - 145, height - 225);
+    ctx.stroke();
+
+    // Hojas doradas translúcidas
+    const branchLeaves = [
+        { x: width - 50, y: height - 50, rx: 19, ry: 7.5, rot: -0.8 },
+        { x: width - 85, y: height - 90, rx: 21, ry: 8.5, rot: 0.6 },
+        { x: width - 105, y: height - 140, rx: 22, ry: 9, rot: -0.7 },
+        { x: width - 128, y: height - 180, rx: 20, ry: 8, rot: 0.5 },
+        { x: width - 145, y: height - 225, rx: 18, ry: 7, rot: -0.2 }
+    ];
+    ctx.fillStyle = "rgba(212, 175, 55, 0.18)";
+    branchLeaves.forEach(bl => {
+        ctx.save();
+        ctx.translate(bl.x, bl.y);
+        ctx.rotate(bl.rot);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, bl.rx, bl.ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    });
+
+    // Línea de puntos dorada sutil
+    ctx.setLineDash([4, 6]);
+    ctx.strokeStyle = "rgba(212, 175, 55, 0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(width - 270, height - 50, 160, Math.PI * 1.5, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.restore();
+}
+
+/**
+ * Descarga la imagen generada en formato PNG o JPEG
+ */
+function descargarImagenGenerada(formato = "png") {
+    if (!canvasPosterGlobal) {
+        alert("Primero debes generar la imagen.");
+        return;
+    }
+
+    const fmt = formato.toLowerCase() === "jpeg" || formato.toLowerCase() === "jpg" ? "jpeg" : "png";
+    const mime = fmt === "jpeg" ? "image/jpeg" : "image/png";
+    const calidad = fmt === "jpeg" ? 0.95 : undefined;
+
+    const dataUrl = canvasPosterGlobal.toDataURL(mime, calidad);
+
+    let nombreArchivo = "horario_semanal";
+    if (cuadranteData && cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+        nombreArchivo = `horario_${cuadranteData.inicio_semana}_al_${cuadranteData.fin_semana}`;
+    }
+
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `${nombreArchivo}.${fmt}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+/**
+ * Copia la imagen directamente al portapapeles para pegar en WhatsApp Web o chat
+ */
+async function copiarImagenAlPortapapeles() {
+    if (!canvasPosterGlobal) {
+        alert("Primero debes generar la imagen.");
+        return;
+    }
+
+    const btnTexto = document.getElementById("textoBtnCopiar");
+    const orig = btnTexto ? btnTexto.textContent : "Copiar Imagen";
+
+    try {
+        canvasPosterGlobal.toBlob(async (blob) => {
+            if (!blob) {
+                alert("No se pudo procesar la imagen.");
+                return;
+            }
+            try {
+                await navigator.clipboard.write([
+                    new ClipboardItem({ "image/png": blob })
+                ]);
+                if (btnTexto) btnTexto.textContent = "¡Copiada con éxito!";
+                setTimeout(() => {
+                    if (btnTexto) btnTexto.textContent = orig;
+                }, 2500);
+            } catch (err) {
+                console.warn("Clipboard write failed, fallback:", err);
+                alert("Tu navegador no permitió copiar directamente al portapapeles. Usa el botón 'Descargar PNG' o 'Descargar JPG'.");
+            }
+        }, "image/png");
+    } catch (e) {
+        console.error("Error al copiar imagen:", e);
+        alert("No se pudo copiar la imagen al portapapeles. Puedes descargarla directamente con el botón Descargar.");
+    }
+}
+

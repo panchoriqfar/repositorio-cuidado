@@ -48,6 +48,22 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
 - Asignación opcional a Personal Médico registrado (médicos, enfermeros, kinesiólogos, etc.).
 - Vinculación automática en las notificaciones diarias y semanales (WhatsApp y Email).
 
+### 7. Generación y Descarga de Imagen Semanal (Afiche Estilo Canva)
+- **Botón "Generar Imagen Semanal"**: Disponible en la barra de control de fecha superior y en la barra inferior al finalizar la asignación semanal de turnos.
+- **Renderizado en Alta Resolución (1600 &times; 1056 px)**:
+  - Encabezado elegante con tipografía serif y caligráfica (*CALENDARIO SEMANAL / Planificación de Personal*).
+  - 7 columnas correspondientes a los días de la semana con paletas de color pastel diferenciadas, ramitas botánicas y medallón de fecha.
+  - Bloques de turno distribuidos por tarjetas:
+    - **AM**: Píldora de turno, icono de sol radiante, horario y nombres de cuidadores.
+    - **PM**: Píldora de turno, icono de atardecer, soporte para 1 o múltiples turnos de tarde (PM1 y PM2) y nombres.
+    - **N (Nocturno)**: Píldora en azul marino, icono de luna en medallón, horario y cuidadores.
+  - **Post-It amarillo con cinta adhesiva (Washi Tape)**: Pre-llenado automáticamente con las actividades y visitas médicas registradas para la semana, con editor de notas personalizado antes de exportar.
+  - **Emblema inferior y acuarela botánica**: Sello circular con silueta de cuidadores y follaje decorativo.
+- **Opciones de Exportación**:
+  - **Descargar PNG** en alta calidad.
+  - **Descargar JPG** optimizado.
+  - **Copiar Imagen al Portapapeles** para pegar directamente con `Ctrl+V` en WhatsApp Web o chat.
+
 ---
 
 ## 🛠️ Stack Tecnológico

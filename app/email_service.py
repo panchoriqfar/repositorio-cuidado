@@ -89,7 +89,7 @@ def construir_contenido_diario(
 
     # Sección de Medicamentos de la Jornada
     if medicamentos:
-        lineas_texto.append("Medicamentos a administrar en la jornada:")
+        lineas_texto.append("Medicamentos a administrar en tu turno:")
         for med in medicamentos:
             h_med = med.hora.strftime("%H:%M")
             d_med = med.dia.strftime("%d/%m/%Y")
@@ -102,12 +102,12 @@ def construir_contenido_diario(
             lineas_texto.append(f"- A las {h_med} hrs: {n_med} (Día: {d_med}{medico_info}).")
         lineas_texto.append("")
     else:
-        lineas_texto.append("No hay administración de medicamentos programada para esta jornada.")
+        lineas_texto.append("No tienes administración de medicamentos programada para tu turno.")
         lineas_texto.append("")
 
     # Sección de Actividades Médicas
     if actividades:
-        lineas_texto.append("Tus actividades del día son:")
+        lineas_texto.append("Tus actividades médicas programadas en el turno son:")
         for act in actividades:
             hora_act = act.hora.strftime("%H:%M")
             desc = act.titulo
@@ -115,7 +115,7 @@ def construir_contenido_diario(
                 desc += f" - {act.descripcion}"
             lineas_texto.append(f"- A las {hora_act} tienes {desc}.")
     else:
-        lineas_texto.append("Hoy no tienes actividades médicas programadas. ¡Que tengas un excelente turno!")
+        lineas_texto.append("No tienes actividades médicas programadas durante tu horario de turno. ¡Que tengas un excelente turno!")
 
     cuerpo_texto = "\n".join(lineas_texto)
 
@@ -135,7 +135,7 @@ def construir_contenido_diario(
             medicamentos_html += f"<li>A las <strong>{h_med} hrs</strong>: <strong>{n_med}</strong> (Día: {d_med}{medico_info})</li>"
         medicamentos_html += "</ul>"
     else:
-        medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No hay administración de medicamentos programada para esta jornada.</p>"
+        medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes administración de medicamentos programada para tu turno.</p>"
 
     # HTML elegante para actividades
     actividades_html = ""
@@ -149,7 +149,7 @@ def construir_contenido_diario(
             actividades_html += f"<li>A las <strong>{hora_act}</strong> tienes {desc}.</li>"
         actividades_html += "</ul>"
     else:
-        actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>Hoy no tienes actividades médicas programadas. ¡Que tengas un excelente turno!</p>"
+        actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes actividades médicas programadas durante tu horario de turno. ¡Que tengas un excelente turno!</p>"
 
     cuerpo_html = f"""
     <!DOCTYPE html>
@@ -168,9 +168,9 @@ def construir_contenido_diario(
                         Tu turno para el día de hoy <strong>{fecha_str}</strong> es en el bloque <strong>{bloque_nombre}</strong> (<strong>{hora_ini} - {hora_fin} hrs</strong>).
                     </p>
                 </div>
-                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">💊 Pauta de Medicamentos de la Jornada:</h3>
+                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">💊 Pauta de Medicamentos en tu Turno:</h3>
                 {medicamentos_html}
-                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">📋 Tus actividades del día son:</h3>
+                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">📋 Tus actividades del turno son:</h3>
                 {actividades_html}
             </div>
             <div style="background: #f1f5f9; padding: 12px 24px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -193,11 +193,12 @@ def construir_contenido_semanal(
     asignaciones: List[AsignacionTurno],
     actividades_por_fecha: Dict[date, List[ActividadMedica]],
     inicio_semana: date,
-    fin_semana: date
+    fin_semana: date,
+    medicamentos_por_fecha: Optional[Dict[date, List[MedicamentoHorario]]] = None
 ) -> Tuple[str, str, str]:
     """
     Construye el asunto, texto plano y HTML del correo semanal
-    según el formato exacto requerido por el sistema.
+    cruzando estrictamente las actividades y medicamentos correspondientes al turno de cada jornada.
     """
     nombre = format_nombre_cuidador(cuidador)
 
@@ -214,11 +215,20 @@ def construir_contenido_semanal(
 
     dias_bloques_str = ", ".join(dias_bloques_list)
 
+    # Cruce estricto: solo actividades que caen dentro del horario de sus turnos
     todas_actividades = []
+    todos_medicamentos = []
     for asig in asigs_ordenadas:
         acts_dia = actividades_por_fecha.get(asig.fecha, [])
         for act in acts_dia:
-            todas_actividades.append((asig.fecha, act))
+            if esta_en_jornada(act.hora, asig.hora_inicio, asig.hora_fin):
+                todas_actividades.append((asig.fecha, act))
+
+        if medicamentos_por_fecha:
+            meds_dia = medicamentos_por_fecha.get(asig.fecha, [])
+            for m in meds_dia:
+                if esta_en_jornada(m.hora, asig.hora_inicio, asig.hora_fin):
+                    todos_medicamentos.append((asig.fecha, m))
 
     rango_str = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
     subject = f"MedTurnos Pro - Planificación semanal de turnos ({rango_str})"
@@ -229,8 +239,18 @@ def construir_contenido_semanal(
         ""
     ]
 
+    if todos_medicamentos:
+        lineas_texto.append("Medicamentos a administrar en tus turnos:")
+        for fecha_med, med in todos_medicamentos:
+            dia_nom = DIAS_ESPANOL.get(fecha_med.weekday(), "")
+            f_str = f"{dia_nom} {fecha_med.strftime('%d/%m/%Y')}"
+            h_str = med.hora.strftime("%H:%M")
+            n_str = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
+            lineas_texto.append(f"- El día {f_str} a las {h_str} hrs: {n_str}.")
+        lineas_texto.append("")
+
     if todas_actividades:
-        lineas_texto.append("Además, tus actividades médicas programadas son:")
+        lineas_texto.append("Tus actividades médicas programadas en turno son:")
         for fecha_act, act in todas_actividades:
             dia_nom = DIAS_ESPANOL.get(fecha_act.weekday(), "")
             f_str = f"{dia_nom} {fecha_act.strftime('%d/%m/%Y')}"
@@ -240,11 +260,24 @@ def construir_contenido_semanal(
                 desc += f" ({act.descripcion})"
             lineas_texto.append(f"- El día {f_str} a las {h_str} tienes {desc}.")
     else:
-        lineas_texto.append("No tienes actividades médicas adicionales programadas para esta semana.")
+        lineas_texto.append("No tienes actividades médicas programadas en tus horarios de turno para esta semana.")
 
     cuerpo_texto = "\n".join(lineas_texto)
 
     dias_items_html = "".join([f"<li style='margin-bottom: 6px;'>{item}</li>" for item in dias_bloques_list])
+
+    medicamentos_html = ""
+    if todos_medicamentos:
+        medicamentos_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
+        for fecha_med, med in todos_medicamentos:
+            dia_nom = DIAS_ESPANOL.get(fecha_med.weekday(), "")
+            f_str = f"{dia_nom} {fecha_med.strftime('%d/%m/%Y')}"
+            h_str = med.hora.strftime("%H:%M")
+            n_str = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
+            medicamentos_html += f"<li>El día <strong>{f_str}</strong> a las <strong>{h_str} hrs</strong>: {n_str}</li>"
+        medicamentos_html += "</ul>"
+    else:
+        medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 13px;'>No tienes administración de medicamentos programada en tus turnos.</p>"
 
     actividades_html = ""
     if todas_actividades:
@@ -259,7 +292,7 @@ def construir_contenido_semanal(
             actividades_html += f"<li>El día <strong>{f_str}</strong> a las <strong>{h_str}</strong> tienes {desc}.</li>"
         actividades_html += "</ul>"
     else:
-        actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes actividades médicas adicionales programadas para esta semana.</p>"
+        actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes actividades médicas programadas en tus horarios de turno para esta semana.</p>"
 
     cuerpo_html = f"""
     <!DOCTYPE html>
@@ -277,7 +310,9 @@ def construir_contenido_semanal(
                 <ul style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 12px 16px 12px 30px; border-radius: 6px; margin: 16px 0; font-size: 14px; color: #0369a1;">
                     {dias_items_html}
                 </ul>
-                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">Además, tus actividades médicas programadas son:</h3>
+                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">💊 Pauta de Medicamentos en tus Turnos:</h3>
+                {medicamentos_html}
+                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">📋 Actividades Médicas en tus Turnos:</h3>
                 {actividades_html}
             </div>
             <div style="background: #f1f5f9; padding: 12px 24px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -287,6 +322,8 @@ def construir_contenido_semanal(
     </body>
     </html>
     """
+
+    return subject, cuerpo_texto, cuerpo_html
 
     return subject, cuerpo_texto, cuerpo_html
 
@@ -380,13 +417,20 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
             })
             continue
 
-        # 2. Filtrar medicamentos para la jornada del turno
-        meds_turno = [m for m in medicamentos_dia if esta_en_jornada(m.hora, asig_principal.hora_inicio, asig_principal.hora_fin)]
-        meds_a_notificar = meds_turno if meds_turno else medicamentos_dia
+        # 2. Cruce estricto por horario del turno del cuidador:
+        # Solo se envían actividades y medicamentos que coincidan exactamente con su jornada
+        acts_turno = [
+            act for act in actividades_dia
+            if any(esta_en_jornada(act.hora, a.hora_inicio, a.hora_fin) for a in lista)
+        ]
+        meds_turno = [
+            m for m in medicamentos_dia
+            if any(esta_en_jornada(m.hora, a.hora_inicio, a.hora_fin) for a in lista)
+        ]
 
         # 3. Construir y enviar vía Resend HTTP API
         try:
-            subject, text, html = construir_contenido_diario(cuid, asig_principal, actividades_dia, meds_a_notificar)
+            subject, text, html = construir_contenido_diario(cuid, asig_principal, acts_turno, meds_turno)
             resend_resp = enviar_email_via_resend(cuid.mail, subject, text, html)
             resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
             logger.info(f"Correo diario enviado vía Resend a {cuid.mail}. ID: {resp_id}")
@@ -448,6 +492,23 @@ def enviar_correos_semana_completa(fecha_base: date, db: Session) -> Dict[str, A
     for act in actividades:
         actividades_por_fecha.setdefault(act.fecha, []).append(act)
 
+    # Buscar medicamentos de la semana
+    medicamentos: List[MedicamentoHorario] = (
+        db.query(MedicamentoHorario)
+        .join(TratamientoMedicamento)
+        .options(joinedload(MedicamentoHorario.tratamiento).joinedload(TratamientoMedicamento.personal_medico))
+        .filter(
+            MedicamentoHorario.dia >= inicio_semana,
+            MedicamentoHorario.dia <= fin_semana
+        )
+        .order_by(MedicamentoHorario.dia.asc(), MedicamentoHorario.hora.asc())
+        .all()
+    )
+
+    medicamentos_por_fecha: Dict[date, List[MedicamentoHorario]] = {}
+    for m in medicamentos:
+        medicamentos_por_fecha.setdefault(m.dia, []).append(m)
+
     asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
     for asig in asignaciones:
         asigs_por_cuidador.setdefault(asig.id_cuidador, []).append(asig)
@@ -486,7 +547,8 @@ def enviar_correos_semana_completa(fecha_base: date, db: Session) -> Dict[str, A
                 asignaciones=lista,
                 actividades_por_fecha=actividades_por_fecha,
                 inicio_semana=inicio_semana,
-                fin_semana=fin_semana
+                fin_semana=fin_semana,
+                medicamentos_por_fecha=medicamentos_por_fecha
             )
             resend_resp = enviar_email_via_resend(cuid.mail, subject, text, html)
             resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")

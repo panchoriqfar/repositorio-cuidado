@@ -53,7 +53,7 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
 - **Horarios y Días (`MedicamentoHorario`)**: Almacena cada toma individual (`dia` y `hora`) vinculada al tratamiento con eliminación en cascada (`ON DELETE CASCADE`).
 - **Registro y Clonación Dinámica**: Permite registrar un tratamiento con múltiples horarios iniciales y replicarlos dinámicamente durante una cantidad de días (`duracion_dias`), fechas específicas o listas de horarios personalizados.
 - **Consulta de Pauta por Profesional**: Endpoint para consultar tratamientos y horarios filtrados por fecha (`GET /api/medicamentos/{personal_medico_id}`).
-- **Integración Automática con Notificaciones**: Los resúmenes diarios (WhatsApp y Correo Electrónico) incorporan automáticamente la lista detallada de medicamentos, días y horarios activos correspondientes a la jornada del turno de cada cuidador/a.
+- **Cruce Estricto por Horario de Turno en Notificaciones**: Los envíos (WhatsApp y Correo Electrónico) cruzan estrictamente el rango horario del turno asignado al cuidador (`hora_inicio` - `hora_fin`). Si una actividad médica o toma de medicamento ocurre fuera de su horario de trabajo (por ejemplo, turno de 10:00 a 14:00 y medicamento a las 16:00 o actividad a las 08:00), esa información no le llegará al cuidador, garantizando que cada profesional reciba exclusivamente las tareas y fármacos que debe gestionar durante su turno.
 
 ### 8. Generación y Descarga de Imagen Semanal (Afiche Estilo Canva)
 - **Botón "Generar Imagen Semanal"**: Disponible en la barra de control de fecha superior y en la barra inferior al finalizar la asignación semanal de turnos.

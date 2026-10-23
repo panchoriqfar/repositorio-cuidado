@@ -95,7 +95,7 @@ def build_whatsapp_message(
 
     # Detalle de Medicamentos de la Jornada
     if medicamentos:
-        mensaje += "\n💊 *Pauta de Medicamentos Activos en la Jornada:*\n"
+        mensaje += "\n💊 *Pauta de Medicamentos en tu Turno:*\n"
         for idx, med in enumerate(medicamentos, 1):
             hora_med = med.hora.strftime("%H:%M")
             dia_med = med.dia.strftime("%d/%m/%Y")
@@ -107,11 +107,11 @@ def build_whatsapp_message(
                 medico_info = f" (Indicado por: {nombre_prof})"
             mensaje += f"  {idx}. [{hora_med}] *{nom_med}* (Día: {dia_med}){medico_info}\n"
     else:
-        mensaje += "\n💊 *Medicamentos:* No hay administración de medicamentos programada para esta jornada.\n"
+        mensaje += "\n💊 *Medicamentos:* No tienes administración de medicamentos programada para tu turno.\n"
 
     # Detalle de Actividades Médicas
     if actividades:
-        mensaje += "\n📋 *Actividades y Visitas Médicas Programadas Hoy:*\n"
+        mensaje += "\n📋 *Actividades Médicas en tu Turno:*\n"
         for idx, act in enumerate(actividades, 1):
             hora_act = act.hora.strftime("%H:%M")
             nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
@@ -125,7 +125,7 @@ def build_whatsapp_message(
                 mensaje += f" - {act.descripcion}"
             mensaje += "\n"
     else:
-        mensaje += "\n📋 *Actividades:* No hay actividades médicas especiales programadas para hoy.\n"
+        mensaje += "\n📋 *Actividades:* No tienes actividades médicas programadas durante tu horario de turno.\n"
 
     mensaje += "\n_Por favor confirma la recepción de este mensaje. ¡Buen turno!_"
     return mensaje
@@ -152,11 +152,12 @@ def build_whatsapp_message_semanal(
     asignaciones: List[AsignacionTurno],
     actividades_por_fecha: Dict[date, List[ActividadMedica]],
     inicio_semana: date,
-    fin_semana: date
+    fin_semana: date,
+    medicamentos_por_fecha: Optional[Dict[date, List[MedicamentoHorario]]] = None
 ) -> str:
     """
     Construye el mensaje de WhatsApp semanal para un cuidador con todos sus turnos
-    de la semana y las actividades médicas programadas en sus días asignados.
+    de la semana y cruzando estrictamente las actividades y medicamentos de sus horarios asignados.
     """
     nombre = format_nombre_cuidador(cuidador)
     rango_str = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
@@ -166,7 +167,7 @@ def build_whatsapp_message_semanal(
         f"📅 *Cronograma Semanal de Turnos*\n"
         f"🗓️ *Semana:* {rango_str}\n\n"
         f"Hola *{nombre}*,\n"
-        f"A continuación te compartimos tus turnos y actividades programadas para toda la semana:\n\n"
+        f"A continuación te compartimos tus turnos, medicamentos y actividades programadas para toda la semana:\n\n"
     )
 
     asignaciones_ordenadas = sorted(asignaciones, key=lambda a: (a.fecha, a.hora_inicio))
@@ -181,10 +182,24 @@ def build_whatsapp_message_semanal(
         mensaje += f"📌 *{dia_nom} {fecha_str}*:\n"
         mensaje += f"   ⏰ *Horario:* {hora_ini} - {hora_fin} hrs ({bloque_nombre})\n"
 
+        # Cruce estricto: solo medicamentos dentro de este horario de turno
+        meds_turno = []
+        if medicamentos_por_fecha:
+            meds_dia = medicamentos_por_fecha.get(asig.fecha, [])
+            meds_turno = [m for m in meds_dia if esta_en_jornada(m.hora, asig.hora_inicio, asig.hora_fin)]
+            if meds_turno:
+                mensaje += "   💊 *Medicamentos en tu Turno:*\n"
+                for idx, m in enumerate(meds_turno, 1):
+                    h_str = m.hora.strftime("%H:%M")
+                    nom_farmaco = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
+                    mensaje += f"      {idx}. [{h_str}] {nom_farmaco}\n"
+
+        # Cruce estricto: solo actividades dentro de este horario de turno
         actividades_dia = actividades_por_fecha.get(asig.fecha, [])
-        if actividades_dia:
-            mensaje += "   📋 *Actividades Médicas del Día:*\n"
-            for idx, act in enumerate(actividades_dia, 1):
+        acts_turno = [act for act in actividades_dia if esta_en_jornada(act.hora, asig.hora_inicio, asig.hora_fin)]
+        if acts_turno:
+            mensaje += "   📋 *Actividades Médicas en tu Turno:*\n"
+            for idx, act in enumerate(acts_turno, 1):
                 hora_act = act.hora.strftime("%H:%M")
                 if act.medico_asignado:
                     nom_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
@@ -195,8 +210,9 @@ def build_whatsapp_message_semanal(
                 if act.descripcion:
                     mensaje += f" - {act.descripcion}"
                 mensaje += "\n"
-        else:
-            mensaje += "   📋 *Actividades:* Sin actividades médicas programadas para este día.\n"
+
+        if not acts_turno and not meds_turno:
+            mensaje += "   📋 Sin actividades médicas ni administración de medicamentos en este turno.\n"
         mensaje += "\n"
 
     mensaje += "_Por favor confirma la recepción de tu cronograma semanal. ¡Muchas gracias!_"
@@ -206,7 +222,7 @@ def build_whatsapp_message_semanal(
 def enviar_notificaciones_del_dia(
     fecha_seleccionada: date, db: Session
 ) -> Dict[str, Any]:
-    """Envía notificaciones de actualización diaria por WhatsApp a cuidadores en turno hoy, incluyendo medicamentos."""
+    """Envía notificaciones de actualización diaria por WhatsApp a cuidadores en turno hoy, cruzando estrictamente horarios."""
     asignaciones: List[AsignacionTurno] = (
         db.query(AsignacionTurno)
         .join(Cuidador)
@@ -246,11 +262,18 @@ def enviar_notificaciones_del_dia(
         if not asig.cuidador.activo:
             continue
 
-        # Medicamentos activos correspondientes a la jornada del turno
-        meds_turno = [m for m in medicamentos_dia if esta_en_jornada(m.hora, asig.hora_inicio, asig.hora_fin)]
-        meds_a_notificar = meds_turno if meds_turno else medicamentos_dia
+        # Cruce estricto por horario del turno del cuidador:
+        # Solo se envían actividades y medicamentos que coincidan exactamente con su jornada
+        acts_turno = [
+            act for act in actividades_dia
+            if esta_en_jornada(act.hora, asig.hora_inicio, asig.hora_fin)
+        ]
+        meds_turno = [
+            m for m in medicamentos_dia
+            if esta_en_jornada(m.hora, asig.hora_inicio, asig.hora_fin)
+        ]
 
-        mensaje_texto = build_whatsapp_message(asig.cuidador, asig, actividades_dia, meds_a_notificar)
+        mensaje_texto = build_whatsapp_message(asig.cuidador, asig, acts_turno, meds_turno)
         destino_whatsapp = format_whatsapp_number(asig.cuidador.telefono_whatsapp)
         nombre_cuid = format_nombre_cuidador(asig.cuidador)
 
@@ -329,6 +352,23 @@ def enviar_notificaciones_semana_completa(
     for act in actividades:
         actividades_por_fecha.setdefault(act.fecha, []).append(act)
 
+    # Buscar medicamentos de la semana
+    medicamentos: List[MedicamentoHorario] = (
+        db.query(MedicamentoHorario)
+        .join(TratamientoMedicamento)
+        .options(joinedload(MedicamentoHorario.tratamiento).joinedload(TratamientoMedicamento.personal_medico))
+        .filter(
+            MedicamentoHorario.dia >= inicio_semana,
+            MedicamentoHorario.dia <= fin_semana
+        )
+        .order_by(MedicamentoHorario.dia.asc(), MedicamentoHorario.hora.asc())
+        .all()
+    )
+
+    medicamentos_por_fecha: Dict[date, List[MedicamentoHorario]] = {}
+    for m in medicamentos:
+        medicamentos_por_fecha.setdefault(m.dia, []).append(m)
+
     # Agrupar asignaciones por cuidador
     asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
     for asig in asignaciones:
@@ -354,7 +394,8 @@ def enviar_notificaciones_semana_completa(
             asignaciones=lista_asigs,
             actividades_por_fecha=actividades_por_fecha,
             inicio_semana=inicio_semana,
-            fin_semana=fin_semana
+            fin_semana=fin_semana,
+            medicamentos_por_fecha=medicamentos_por_fecha
         )
         destino_whatsapp = format_whatsapp_number(cuidador.telefono_whatsapp)
         nombre_cuid = format_nombre_cuidador(cuidador)

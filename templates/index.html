@@ -69,6 +69,10 @@
                         <i class="fa-solid fa-user-doctor text-teal-600"></i>
                         <span class="hidden sm:inline">Personal Médico</span>
                     </button>
+                    <button onclick="openMedicamentosModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1.5" title="Gestión de Medicamentos">
+                        <i class="fa-solid fa-pills text-rose-500"></i>
+                        <span class="hidden sm:inline">Medicamentos</span>
+                    </button>
                     <button onclick="openNotificacionModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" title="Actualización Diaria por WhatsApp">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
                         <span class="hidden sm:inline">Actualización Diaria</span>
@@ -214,6 +218,38 @@
             <div id="contenedorActividades" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div class="col-span-full text-center py-8 text-slate-400">
                     <p class="text-sm">Cargando actividades...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN: GESTIÓN Y PAUTA DE MEDICAMENTOS -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
+                        <i class="fa-solid fa-pills"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">Pauta y Gestión de Medicamentos</h2>
+                        <p class="text-xs text-slate-500">Tratamientos farmacológicos, días y horarios de administración activos</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 flex-wrap">
+                    <select id="filtroMedicoMedicamentos" onchange="filtrarMedicamentosDashboard()" class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-rose-500">
+                        <option value="">Todos los médicos</option>
+                    </select>
+
+                    <button id="btnNuevoTratamiento" onclick="openMedicamentosModal()" class="hidden px-3.5 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Nuevo Tratamiento</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="contenedorMedicamentos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="col-span-full text-center py-8 text-slate-400">
+                    <p class="text-sm">Cargando tratamientos de medicamentos...</p>
                 </div>
             </div>
         </div>
@@ -473,6 +509,184 @@
             <div class="flex-1 overflow-y-auto space-y-2 pr-1" id="listaMedicos">
                 <!-- Dinámico -->
             </div>
+        </div>
+    </div>
+
+    <!-- 5.1 MODAL GESTIÓN DE MEDICAMENTOS -->
+    <div id="medicamentosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[92vh] flex flex-col my-auto">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2.5 text-rose-600">
+                    <div class="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center">
+                        <i class="fa-solid fa-pills text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base sm:text-lg">Gestión de Medicamentos</h3>
+                        <p class="text-xs text-slate-500">Tratamientos, horarios dinámicos y pautas médicas</p>
+                    </div>
+                </div>
+                <button onclick="closeMedicamentosModal()" class="text-slate-400 hover:text-slate-600 text-xl p-1 leading-none">&times;</button>
+            </div>
+
+            <!-- Selector de Pestañas -->
+            <div class="flex border-b border-slate-200 text-xs font-semibold">
+                <button id="tabBtnNuevoTratamiento" onclick="cambiarTabMedicamentos('nuevo')" class="py-2 px-4 border-b-2 border-rose-600 text-rose-600 transition-colors flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus-circle"></i>
+                    <span>Registrar Tratamiento</span>
+                </button>
+                <button id="tabBtnPautasTratamiento" onclick="cambiarTabMedicamentos('pautas')" class="py-2 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-1.5">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>Consultar Pautas Médicas</span>
+                </button>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 1: NUEVO TRATAMIENTO -->
+            <div id="tabContenidoNuevoTratamiento" class="space-y-4 overflow-y-auto pr-1 flex-1">
+                <form id="nuevoTratamientoForm" onsubmit="handleCrearTratamiento(event)" class="bg-rose-50/40 p-4 rounded-xl border border-rose-200/80 space-y-3.5">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-rose-900">Datos del Tratamiento</h4>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Personal Médico Tratante / Prescriptor <span class="text-rose-500">*</span></label>
+                            <select id="medTratPersonalMedico" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                                <option value="">Seleccione médico o profesional...</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nombre y Dosis del Medicamento <span class="text-rose-500">*</span></label>
+                            <input type="text" id="medTratNombre" required placeholder="Ej: Paracetamol 500mg, Losartán 50mg" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Día Inicial <span class="text-rose-500">*</span></label>
+                            <input type="date" id="medTratDiaInicial" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                        </div>
+                    </div>
+
+                    <!-- Horarios Iniciales -->
+                    <div class="pt-2 border-t border-rose-100 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-[11px] font-semibold text-slate-700">Horarios Iniciales de Toma <span class="text-rose-500">*</span></label>
+                            <span class="text-[10px] text-slate-400">Agrega las horas del día inicial</span>
+                        </div>
+                        
+                        <div class="flex items-center gap-2">
+                            <input type="time" id="medTratHoraInput" class="px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                            <button type="button" onclick="agregarHoraInicialDesdeInput()" class="px-3 py-1.5 text-xs font-semibold bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg transition-colors flex items-center gap-1">
+                                <i class="fa-solid fa-plus text-[10px]"></i>
+                                <span>Agregar</span>
+                            </button>
+                        </div>
+
+                        <!-- Botones rápidos de horas -->
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-[10px] text-slate-500 font-medium">Horas comunes:</span>
+                            <button type="button" onclick="agregarPresetHora('08:00')" class="px-2 py-0.5 text-[10px] bg-white hover:bg-rose-50 border border-slate-200 rounded-md text-slate-700 font-medium">08:00</button>
+                            <button type="button" onclick="agregarPresetHora('12:00')" class="px-2 py-0.5 text-[10px] bg-white hover:bg-rose-50 border border-slate-200 rounded-md text-slate-700 font-medium">12:00</button>
+                            <button type="button" onclick="agregarPresetHora('16:00')" class="px-2 py-0.5 text-[10px] bg-white hover:bg-rose-50 border border-slate-200 rounded-md text-slate-700 font-medium">16:00</button>
+                            <button type="button" onclick="agregarPresetHora('20:00')" class="px-2 py-0.5 text-[10px] bg-white hover:bg-rose-50 border border-slate-200 rounded-md text-slate-700 font-medium">20:00</button>
+                            <button type="button" onclick="agregarPresetHora('22:00')" class="px-2 py-0.5 text-[10px] bg-white hover:bg-rose-50 border border-slate-200 rounded-md text-slate-700 font-medium">22:00</button>
+                        </div>
+
+                        <!-- Badges de Horas Seleccionadas -->
+                        <div id="medTratHorasTags" class="flex flex-wrap gap-1.5 min-h-[32px] p-2 bg-white rounded-lg border border-slate-200">
+                            <span class="text-[11px] text-slate-400 italic">No has agregado horarios aún.</span>
+                        </div>
+                    </div>
+
+                    <!-- Clonación Dinámica -->
+                    <div class="pt-2 border-t border-rose-100 space-y-2">
+                        <label class="block text-[11px] font-semibold text-slate-700">Clonación Dinámica de Horarios</label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] text-slate-500 mb-0.5">Duración en días consecutivos (opcional):</label>
+                                <input type="number" id="medTratDuracionDias" min="1" max="90" placeholder="Ej: 7 (para replicar toda la semana)" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                                <span class="text-[10px] text-slate-400">Clona los horarios automáticamente en los días siguientes.</span>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-500 mb-0.5">O agregar fecha específica extra:</label>
+                                <div class="flex gap-1.5">
+                                    <input type="date" id="medTratFechaExtraInput" class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                                    <button type="button" onclick="agregarFechaExtraDesdeInput()" class="px-2.5 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700">+</button>
+                                </div>
+                                <div id="medTratFechasExtrasTags" class="flex flex-wrap gap-1 mt-1"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-right pt-2">
+                        <button type="submit" id="btnSubmitTratamiento" class="px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5 ml-auto">
+                            <i class="fa-solid fa-floppy-disk"></i>
+                            <span>Guardar Tratamiento y Horarios</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 2: CONSULTAR PAUTAS -->
+            <div id="tabContenidoPautasTratamiento" class="hidden space-y-3 overflow-y-auto pr-1 flex-1">
+                <!-- Filtros en Modal -->
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                    <div class="flex-1">
+                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Personal Médico:</label>
+                        <select id="medConsultaMedico" onchange="consultarPautaMedicoUI()" class="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                            <option value="">Todos los profesionales</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Filtrar por Fecha:</label>
+                        <div class="flex items-center gap-1.5">
+                            <input type="date" id="medConsultaFecha" onchange="consultarPautaMedicoUI()" class="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                            <button type="button" onclick="limpiarFiltroFechaConsulta()" title="Quitar filtro de fecha" class="px-2 py-1.5 text-xs text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lista de Tratamientos / Pautas -->
+                <div id="listaTratamientosModal" class="space-y-2.5">
+                    <!-- Dinámico -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5.2 MODAL CLONAR / EXTENDER HORARIOS A TRATAMIENTO EXISTENTE -->
+    <div id="clonarHorariosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-rose-600">
+                    <i class="fa-solid fa-copy text-lg"></i>
+                    <h3 class="font-bold text-slate-900 text-base" id="clonarModalTitulo">Extender Horarios</h3>
+                </div>
+                <button onclick="closeClonarHorariosModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <form id="clonarHorariosForm" onsubmit="handleClonarHorarios(event)" class="space-y-3">
+                <input type="hidden" id="clonarTratamientoId">
+                <div class="bg-rose-50/60 p-3 rounded-xl border border-rose-100 text-xs">
+                    <span class="text-slate-500 block">Medicamento:</span>
+                    <strong class="text-slate-900 text-sm" id="clonarNombreMedicamento">-</strong>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Días a extender (consecutivos):</label>
+                    <input type="number" id="clonarDiasNum" min="1" max="60" value="7" placeholder="Ej: 7" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                    <span class="text-[10px] text-slate-400">Replicará los horarios del tratamiento a partir del último día registrado.</span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">O agregar una fecha puntual:</label>
+                    <input type="date" id="clonarFechaPuntual" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button type="button" onclick="closeClonarHorariosModal()" class="px-3.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                    <button type="submit" class="px-4 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm">Clonar Horarios</button>
+                </div>
+            </form>
         </div>
     </div>
 

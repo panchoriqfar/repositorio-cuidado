@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await cargarDatosIniciales();
     await cargarCuadrante();
     await cargarActividades();
+    await cargarMedicamentos();
 });
 
 // --- AUTENTICACIÓN Y SESIÓN ---
@@ -54,6 +55,11 @@ async function checkAuth() {
         btnNuevaAsignacion.classList.remove("inline-flex");
         btnNuevaActividad.classList.add("hidden");
         btnNuevaActividad.classList.remove("inline-flex");
+        const btnNuevoTratamiento = document.getElementById("btnNuevoTratamiento");
+        if (btnNuevoTratamiento) {
+            btnNuevoTratamiento.classList.add("hidden");
+            btnNuevoTratamiento.classList.remove("inline-flex");
+        }
         if (btnGestionUsuarios) {
             btnGestionUsuarios.classList.add("hidden");
             btnGestionUsuarios.classList.remove("inline-flex");
@@ -94,6 +100,11 @@ async function checkAuth() {
             btnNuevaAsignacion.classList.add("inline-flex");
             btnNuevaActividad.classList.remove("hidden");
             btnNuevaActividad.classList.add("inline-flex");
+            const btnNuevoTratamiento = document.getElementById("btnNuevoTratamiento");
+            if (btnNuevoTratamiento) {
+                btnNuevoTratamiento.classList.remove("hidden");
+                btnNuevoTratamiento.classList.add("inline-flex");
+            }
 
             // Mostrar botón WhatsApp semanal para usuarios autenticados
             const barraWhatsappSemanal = document.getElementById("barraWhatsappSemanal");
@@ -206,6 +217,7 @@ function navegarSemana(diasOffset) {
     actualizarInputFechaPicker(fechaActual);
     cargarCuadrante();
     cargarActividades();
+    cargarMedicamentos();
 }
 
 function irSemanaActual() {
@@ -213,6 +225,7 @@ function irSemanaActual() {
     actualizarInputFechaPicker(fechaActual);
     cargarCuadrante();
     cargarActividades();
+    cargarMedicamentos();
 }
 
 function seleccionarFecha(valorStr) {
@@ -221,6 +234,7 @@ function seleccionarFecha(valorStr) {
         fechaActual = new Date(partes[0], partes[1] - 1, partes[2]);
         cargarCuadrante();
         cargarActividades();
+        cargarMedicamentos();
     }
 }
 
@@ -2576,4 +2590,619 @@ async function copiarImagenAlPortapapeles() {
         alert("No se pudo copiar la imagen al portapapeles. Puedes descargarla directamente con el botón Descargar.");
     }
 }
+
+
+// ==============================================================================
+// --- GESTIÓN DE MEDICAMENTOS (FRONTEND) ---
+// ==============================================================================
+
+let listaTratamientosCache = [];
+let horasInicialesSeleccionadas = [];
+let fechasExtrasSeleccionadas = [];
+let tabMedicamentosActivo = 'nuevo';
+
+/**
+ * Carga la lista completa de tratamientos y los renderiza en el dashboard principal.
+ */
+async function cargarMedicamentos() {
+    const cont = document.getElementById("contenedorMedicamentos");
+    if (!cont) return;
+
+    try {
+        const res = await fetch("/api/medicamentos/");
+        if (!res.ok) throw new Error("Error obteniendo tratamientos");
+        const tratamientos = await res.json();
+        listaTratamientosCache = Array.isArray(tratamientos) ? tratamientos : [];
+
+        // Actualizar select de filtro por médico en el dashboard
+        actualizarSelectFiltroMedicosDashboard();
+
+        // Renderizar en el contenedor principal
+        renderizarMedicamentosEnDashboard(listaTratamientosCache);
+    } catch (err) {
+        console.error("Error cargando medicamentos:", err);
+        cont.innerHTML = `
+            <div class="col-span-full text-center py-8 text-rose-500 bg-rose-50/50 rounded-xl border border-dashed border-rose-200">
+                <p class="text-xs font-medium">Error al cargar tratamientos de medicamentos.</p>
+            </div>
+        `;
+    }
+}
+
+function actualizarSelectFiltroMedicosDashboard() {
+    const select = document.getElementById("filtroMedicoMedicamentos");
+    if (!select) return;
+
+    const valActual = select.value;
+    select.innerHTML = '<option value="">Todos los médicos</option>';
+
+    listaMedicosCache.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m.id_medico;
+        const nombreMed = `${m.nombre} ${m.apellido || ''}`.trim();
+        opt.textContent = `${nombreMed} (${m.especialidad})`;
+        select.appendChild(opt);
+    });
+
+    select.value = valActual;
+}
+
+function filtrarMedicamentosDashboard() {
+    const select = document.getElementById("filtroMedicoMedicamentos");
+    const idMed = select ? select.value : "";
+    if (!idMed) {
+        renderizarMedicamentosEnDashboard(listaTratamientosCache);
+    } else {
+        const filtrados = listaTratamientosCache.filter(t => String(t.personal_medico_id) === String(idMed));
+        renderizarMedicamentosEnDashboard(filtrados);
+    }
+}
+
+function renderizarMedicamentosEnDashboard(tratamientos) {
+    const cont = document.getElementById("contenedorMedicamentos");
+    if (!cont) return;
+    const esAdmin = !!getToken();
+
+    if (!tratamientos || tratamientos.length === 0) {
+        cont.innerHTML = `
+            <div class="col-span-full text-center py-8 text-slate-400 bg-slate-50/70 rounded-xl border border-dashed border-slate-200">
+                <i class="fa-solid fa-pills text-2xl mb-2 text-slate-300"></i>
+                <p class="text-xs font-medium">No hay tratamientos de medicamentos registrados.</p>
+                ${esAdmin ? `
+                    <button onclick="openMedicamentosModal()" class="mt-2.5 px-3 py-1.5 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-colors inline-flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                        <span>Registrar Primer Tratamiento</span>
+                    </button>
+                ` : ''}
+            </div>
+        `;
+        return;
+    }
+
+    cont.innerHTML = tratamientos.map(t => {
+        const nombreMed = t.personal_medico 
+            ? `${t.personal_medico.nombre} ${t.personal_medico.apellido || ''}`.trim()
+            : "Médico asignado";
+        const espMed = t.personal_medico ? t.personal_medico.especialidad : "";
+
+        // Ordenar horarios
+        const horariosOrdenados = (t.horarios || []).slice().sort((a, b) => {
+            if (a.dia === b.dia) return a.hora.localeCompare(b.hora);
+            return a.dia.localeCompare(b.dia);
+        });
+
+        // Agrupar horarios por día
+        const horariosPorDia = {};
+        horariosOrdenados.forEach(h => {
+            if (!horariosPorDia[h.dia]) horariosPorDia[h.dia] = [];
+            horariosPorDia[h.dia].push(h.hora.slice(0, 5));
+        });
+
+        const totalTomas = horariosOrdenados.length;
+        const diasTotales = Object.keys(horariosPorDia).length;
+
+        // Renderizar resumen de días/horas
+        const previewsDiasHtml = Object.entries(horariosPorDia).slice(0, 3).map(([dia, horas]) => {
+            const fechaObj = new Date(dia + "T00:00:00");
+            const diasSem = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+            const sem = diasSem[fechaObj.getDay()];
+            const num = fechaObj.getDate();
+            return `
+                <div class="flex items-center justify-between text-[11px] bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                    <span class="font-semibold text-slate-700">${sem} ${num}:</span>
+                    <span class="text-rose-600 font-medium">${horas.join(', ')} hrs</span>
+                </div>
+            `;
+        }).join("");
+
+        const masDias = diasTotales > 3 ? `<span class="text-[10px] text-slate-400 block text-center">+ ${diasTotales - 3} días más...</span>` : '';
+
+        return `
+            <div class="p-4 rounded-xl border border-slate-200 bg-white hover:border-rose-300 hover:shadow-md transition-all space-y-3 flex flex-col justify-between">
+                <div class="space-y-2">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center text-xs">
+                                <i class="fa-solid fa-capsules"></i>
+                            </span>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-900 leading-snug">${t.nombre_medicamento}</h4>
+                                <span class="text-[10px] text-slate-400">Inicio: ${t.dia_inicial}</span>
+                            </div>
+                        </div>
+                        ${esAdmin ? `
+                            <div class="flex items-center space-x-1">
+                                <button onclick="openClonarHorariosModal(${JSON.stringify(t).replace(/"/g, '&quot;')})" title="Clonar / Extender días" class="p-1 text-slate-400 hover:text-rose-600 transition-colors">
+                                    <i class="fa-regular fa-copy text-xs"></i>
+                                </button>
+                                <button onclick="eliminarTratamientoUI(${t.id})" title="Eliminar tratamiento" class="p-1 text-slate-400 hover:text-rose-600 transition-colors">
+                                    <i class="fa-regular fa-trash-can text-xs"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Pauta y horas -->
+                    <div class="space-y-1.5 pt-1">
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span class="text-slate-500 font-medium">Tomas programadas:</span>
+                            <span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold text-[10px] border border-rose-100">${totalTomas} tomas (${diasTotales} días)</span>
+                        </div>
+                        <div class="space-y-1">
+                            ${previewsDiasHtml}
+                            ${masDias}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer médico -->
+                <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <div class="flex items-center space-x-1.5 text-teal-700 font-medium truncate">
+                        <i class="fa-solid fa-user-doctor text-[11px]"></i>
+                        <span class="truncate" title="${nombreMed} (${espMed})">${nombreMed}</span>
+                    </div>
+                    ${esAdmin ? `
+                        <button onclick="openClonarHorariosModal(${JSON.stringify(t).replace(/"/g, '&quot;')})" class="text-[11px] font-semibold text-rose-600 hover:text-rose-700">
+                            + Extender
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
+/**
+ * Abre el modal de Medicamentos y prepara los selects de médico y fechas.
+ */
+function openMedicamentosModal() {
+    poblarSelectsMedicosMedicamentos();
+
+    // Fecha inicial por defecto
+    const inputDia = document.getElementById("medTratDiaInicial");
+    if (inputDia) {
+        inputDia.value = formatDateIso(fechaActual);
+    }
+
+    // Limpiar horas y tags
+    horasInicialesSeleccionadas = [];
+    fechasExtrasSeleccionadas = [];
+    renderizarHorasInicialesTags();
+    renderizarFechasExtrasTags();
+
+    // Resetear formulario
+    const form = document.getElementById("nuevoTratamientoForm");
+    if (form) form.reset();
+    if (inputDia) inputDia.value = formatDateIso(fechaActual);
+
+    // Cargar pautas en pestaña 2
+    consultarPautaMedicoUI();
+
+    // Cambiar a pestaña 1
+    cambiarTabMedicamentos('nuevo');
+
+    const modal = document.getElementById("medicamentosModal");
+    if (modal) modal.classList.remove("hidden");
+}
+
+function closeMedicamentosModal() {
+    const modal = document.getElementById("medicamentosModal");
+    if (modal) modal.classList.add("hidden");
+}
+
+function poblarSelectsMedicosMedicamentos() {
+    const select1 = document.getElementById("medTratPersonalMedico");
+    const select2 = document.getElementById("medConsultaMedico");
+
+    if (select1) {
+        select1.innerHTML = '<option value="">Seleccione médico o profesional...</option>';
+        listaMedicosCache.filter(m => m.activo).forEach(m => {
+            const opt = document.createElement("option");
+            opt.value = m.id_medico;
+            const nom = `${m.nombre} ${m.apellido || ''}`.trim();
+            opt.textContent = `${nom} - ${m.especialidad}`;
+            select1.appendChild(opt);
+        });
+    }
+
+    if (select2) {
+        select2.innerHTML = '<option value="">Todos los profesionales</option>';
+        listaMedicosCache.forEach(m => {
+            const opt = document.createElement("option");
+            opt.value = m.id_medico;
+            const nom = `${m.nombre} ${m.apellido || ''}`.trim();
+            opt.textContent = `${nom} - ${m.especialidad}`;
+            select2.appendChild(opt);
+        });
+    }
+}
+
+function cambiarTabMedicamentos(tab) {
+    tabMedicamentosActivo = tab;
+    const btnNuevo = document.getElementById("tabBtnNuevoTratamiento");
+    const btnPautas = document.getElementById("tabBtnPautasTratamiento");
+    const contNuevo = document.getElementById("tabContenidoNuevoTratamiento");
+    const contPautas = document.getElementById("tabContenidoPautasTratamiento");
+
+    if (!btnNuevo || !btnPautas || !contNuevo || !contPautas) return;
+
+    if (tab === 'nuevo') {
+        btnNuevo.className = "py-2 px-4 border-b-2 border-rose-600 text-rose-600 transition-colors flex items-center gap-1.5";
+        btnPautas.className = "py-2 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-1.5";
+        contNuevo.classList.remove("hidden");
+        contPautas.classList.add("hidden");
+    } else {
+        btnPautas.className = "py-2 px-4 border-b-2 border-rose-600 text-rose-600 transition-colors flex items-center gap-1.5";
+        btnNuevo.className = "py-2 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-1.5";
+        contPautas.classList.remove("hidden");
+        contNuevo.classList.add("hidden");
+        consultarPautaMedicoUI();
+    }
+}
+
+function agregarPresetHora(horaStr) {
+    if (!horasInicialesSeleccionadas.includes(horaStr)) {
+        horasInicialesSeleccionadas.push(horaStr);
+        horasInicialesSeleccionadas.sort();
+        renderizarHorasInicialesTags();
+    }
+}
+
+function agregarHoraInicialDesdeInput() {
+    const input = document.getElementById("medTratHoraInput");
+    if (!input || !input.value) return;
+    const horaVal = input.value.slice(0, 5);
+    if (!horasInicialesSeleccionadas.includes(horaVal)) {
+        horasInicialesSeleccionadas.push(horaVal);
+        horasInicialesSeleccionadas.sort();
+        renderizarHorasInicialesTags();
+    }
+    input.value = "";
+}
+
+function eliminarHoraInicial(idx) {
+    horasInicialesSeleccionadas.splice(idx, 1);
+    renderizarHorasInicialesTags();
+}
+
+function renderizarHorasInicialesTags() {
+    const cont = document.getElementById("medTratHorasTags");
+    if (!cont) return;
+
+    if (horasInicialesSeleccionadas.length === 0) {
+        cont.innerHTML = `<span class="text-[11px] text-slate-400 italic">No has agregado horarios aún.</span>`;
+        return;
+    }
+
+    cont.innerHTML = horasInicialesSeleccionadas.map((h, idx) => `
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">
+            <i class="fa-regular fa-clock text-[10px]"></i>
+            <span>${h}</span>
+            <button type="button" onclick="eliminarHoraInicial(${idx})" class="text-rose-400 hover:text-rose-700 ml-0.5 text-xs font-bold">&times;</button>
+        </span>
+    `).join("");
+}
+
+function agregarFechaExtraDesdeInput() {
+    const input = document.getElementById("medTratFechaExtraInput");
+    if (!input || !input.value) return;
+    const fechaVal = input.value;
+    if (!fechasExtrasSeleccionadas.includes(fechaVal)) {
+        fechasExtrasSeleccionadas.push(fechaVal);
+        fechasExtrasSeleccionadas.sort();
+        renderizarFechasExtrasTags();
+    }
+    input.value = "";
+}
+
+function eliminarFechaExtra(idx) {
+    fechasExtrasSeleccionadas.splice(idx, 1);
+    renderizarFechasExtrasTags();
+}
+
+function renderizarFechasExtrasTags() {
+    const cont = document.getElementById("medTratFechasExtrasTags");
+    if (!cont) return;
+
+    cont.innerHTML = fechasExtrasSeleccionadas.map((f, idx) => `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
+            <span>${f}</span>
+            <button type="button" onclick="eliminarFechaExtra(${idx})" class="text-slate-400 hover:text-slate-700">&times;</button>
+        </span>
+    `).join("");
+}
+
+async function handleCrearTratamiento(e) {
+    e.preventDefault();
+    const token = getToken();
+
+    const personalMedicoId = document.getElementById("medTratPersonalMedico").value;
+    const nombreMed = document.getElementById("medTratNombre").value.trim();
+    const diaInicial = document.getElementById("medTratDiaInicial").value;
+    const duracionDias = document.getElementById("medTratDuracionDias").value;
+
+    if (!personalMedicoId) {
+        alert("Por favor selecciona un personal médico.");
+        return;
+    }
+    if (!nombreMed) {
+        alert("Por favor ingresa el nombre del medicamento.");
+        return;
+    }
+    if (!diaInicial) {
+        alert("Por favor selecciona el día inicial.");
+        return;
+    }
+    if (horasInicialesSeleccionadas.length === 0) {
+        alert("Por favor agrega al menos un horario inicial de toma (ej: 08:00).");
+        return;
+    }
+
+    const payload = {
+        personal_medico_id: parseInt(personalMedicoId),
+        nombre_medicamento: nombreMed,
+        dia_inicial: diaInicial,
+        horarios_iniciales: horasInicialesSeleccionadas.map(h => h.length === 5 ? `${h}:00` : h)
+    };
+
+    if (duracionDias && parseInt(duracionDias) > 1) {
+        payload.duracion_dias = parseInt(duracionDias);
+    }
+    if (fechasExtrasSeleccionadas.length > 0) {
+        payload.fechas_adicionales = fechasExtrasSeleccionadas;
+    }
+
+    const btnSubmit = document.getElementById("btnSubmitTratamiento");
+    if (btnSubmit) btnSubmit.disabled = true;
+
+    try {
+        const headers = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch("/api/medicamentos/", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            alert(`¡Tratamiento de ${data.nombre_medicamento} registrado exitosamente con ${data.horarios ? data.horarios.length : 0} tomas programadas!`);
+            
+            // Limpiar y recargar
+            horasInicialesSeleccionadas = [];
+            fechasExtrasSeleccionadas = [];
+            renderizarHorasInicialesTags();
+            renderizarFechasExtrasTags();
+            document.getElementById("nuevoTratamientoForm").reset();
+
+            await cargarMedicamentos();
+            cambiarTabMedicamentos('pautas');
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al registrar tratamiento de medicamento");
+        }
+    } catch (err) {
+        console.error("Error al registrar tratamiento:", err);
+        alert("Error de conexión al guardar el tratamiento.");
+    } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
+    }
+}
+
+/**
+ * Consulta la pauta de medicamentos asignada a un médico o general filtrada por fecha.
+ */
+async function consultarPautaMedicoUI() {
+    const cont = document.getElementById("listaTratamientosModal");
+    if (!cont) return;
+
+    const selectMed = document.getElementById("medConsultaMedico");
+    const inputFecha = document.getElementById("medConsultaFecha");
+
+    const medId = selectMed ? selectMed.value : "";
+    const fechaVal = inputFecha ? inputFecha.value : "";
+
+    let url = "/api/medicamentos/";
+    if (medId) {
+        url = `/api/medicamentos/${medId}`;
+        if (fechaVal) url += `?fecha=${fechaVal}`;
+    } else {
+        if (fechaVal) url += `?fecha=${fechaVal}`;
+    }
+
+    try {
+        cont.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Consultando pautas...</p>`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Error consultando pautas");
+        const tratamientos = await res.json();
+
+        if (!tratamientos || tratamientos.length === 0) {
+            cont.innerHTML = `
+                <div class="text-center py-6 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                    <p class="text-xs">No se encontraron medicamentos para el criterio seleccionado.</p>
+                </div>
+            `;
+            return;
+        }
+
+        cont.innerHTML = tratamientos.map(t => {
+            const nomMed = t.personal_medico ? `${t.personal_medico.nombre} ${t.personal_medico.apellido || ''}`.trim() : "Médico";
+            const horariosList = (t.horarios || []).map(h => {
+                const fStr = h.dia;
+                const hStr = h.hora.slice(0, 5);
+                return `
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-800 text-[11px] font-semibold">
+                        <span>${fStr} ${hStr}</span>
+                        <button type="button" onclick="eliminarHorarioIndividualUI(${h.id})" title="Eliminar toma horaria" class="text-rose-400 hover:text-rose-700 ml-0.5">&times;</button>
+                    </span>
+                `;
+            }).join("");
+
+            return `
+                <div class="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="font-bold text-xs text-slate-900">${t.nombre_medicamento}</div>
+                            <div class="text-[11px] text-teal-700 font-medium">${nomMed} &bull; Inicio: ${t.dia_inicial}</div>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="openClonarHorariosModal(${JSON.stringify(t).replace(/"/g, '&quot;')})" title="Extender días" class="px-2 py-1 text-[10px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md transition-colors">
+                                + Extender
+                            </button>
+                            <button onclick="eliminarTratamientoUI(${t.id})" title="Eliminar tratamiento completo" class="p-1 text-slate-400 hover:text-rose-600">
+                                <i class="fa-regular fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pt-1.5 border-t border-slate-100">
+                        <span class="text-[10px] text-slate-500 font-medium block mb-1">Horarios y Días Activos:</span>
+                        <div class="flex flex-wrap gap-1">
+                            ${horariosList || '<span class="text-[10px] text-slate-400 italic">Sin horarios en esta fecha.</span>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+    } catch (err) {
+        console.error("Error consultando pautas:", err);
+        cont.innerHTML = `<p class="text-xs text-rose-500 py-3 text-center">Error al consultar pautas.</p>`;
+    }
+}
+
+function limpiarFiltroFechaConsulta() {
+    const input = document.getElementById("medConsultaFecha");
+    if (input) input.value = "";
+    consultarPautaMedicoUI();
+}
+
+/**
+ * Modal para clonar o extender días en un tratamiento existente.
+ */
+function openClonarHorariosModal(tratamiento) {
+    if (!tratamiento) return;
+    document.getElementById("clonarTratamientoId").value = tratamiento.id;
+    document.getElementById("clonarNombreMedicamento").textContent = tratamiento.nombre_medicamento;
+    document.getElementById("clonarDiasNum").value = 7;
+    document.getElementById("clonarFechaPuntual").value = "";
+
+    const modal = document.getElementById("clonarHorariosModal");
+    if (modal) modal.classList.remove("hidden");
+}
+
+function closeClonarHorariosModal() {
+    const modal = document.getElementById("clonarHorariosModal");
+    if (modal) modal.classList.add("hidden");
+}
+
+async function handleClonarHorarios(e) {
+    e.preventDefault();
+    const token = getToken();
+    const tratId = document.getElementById("clonarTratamientoId").value;
+    const diasNum = document.getElementById("clonarDiasNum").value;
+    const fechaPuntual = document.getElementById("clonarFechaPuntual").value;
+
+    const payload = {};
+    if (diasNum && parseInt(diasNum) > 0) {
+        payload.dias_a_clonar = parseInt(diasNum);
+    }
+    if (fechaPuntual) {
+        payload.fechas = [fechaPuntual];
+    }
+
+    try {
+        const headers = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/medicamentos/${tratId}/horarios`, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            closeClonarHorariosModal();
+            alert("¡Horarios clonados y extendidos exitosamente!");
+            await cargarMedicamentos();
+            consultarPautaMedicoUI();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al clonar horarios");
+        }
+    } catch (err) {
+        alert("Error de conexión al clonar horarios");
+    }
+}
+
+async function eliminarTratamientoUI(tratamientoId) {
+    if (!confirm("¿Eliminar este tratamiento y todos sus horarios en cascada?")) return;
+    const token = getToken();
+
+    try {
+        const headers = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/medicamentos/${tratamientoId}`, {
+            method: "DELETE",
+            headers: headers
+        });
+
+        if (res.ok) {
+            await cargarMedicamentos();
+            consultarPautaMedicoUI();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al eliminar tratamiento");
+        }
+    } catch (err) {
+        alert("Error de conexión al eliminar tratamiento");
+    }
+}
+
+async function eliminarHorarioIndividualUI(horarioId) {
+    if (!confirm("¿Eliminar este horario puntual de toma?")) return;
+    const token = getToken();
+
+    try {
+        const headers = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/medicamentos/horarios/${horarioId}`, {
+            method: "DELETE",
+            headers: headers
+        });
+
+        if (res.ok) {
+            await cargarMedicamentos();
+            consultarPautaMedicoUI();
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al eliminar horario");
+        }
+    } catch (err) {
+        alert("Error de conexión al eliminar horario");
+    }
+}
+
 

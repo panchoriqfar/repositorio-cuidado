@@ -8,7 +8,7 @@ Gestión de notificaciones por WhatsApp para cuidadores:
 import os
 import logging
 from datetime import date, time, datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 from sqlalchemy.orm import Session, joinedload
 from dotenv import load_dotenv
@@ -67,30 +67,73 @@ def esta_en_jornada(hora_med: time, hora_inicio: time, hora_fin: time) -> bool:
         return hora_med >= hora_inicio or hora_med <= hora_fin
 
 
+def format_turnos_diarios_texto(
+    asignaciones: Union[AsignacionTurno, List[AsignacionTurno]],
+    estilo: str = "texto"
+) -> str:
+    """
+    Formatea la descripción consolidada de los turnos de un cuidador para el día.
+    estilo: 'texto' (plano), 'whatsapp' (con asteriscos *negrita*), 'html' (con <strong>)
+    """
+    if isinstance(asignaciones, (list, tuple, set)):
+        lista = list(asignaciones)
+    else:
+        lista = [asignaciones]
+
+    if not lista:
+        return "sin turno asignado"
+
+    lista_ordenada = sorted(lista, key=lambda a: a.hora_inicio)
+
+    frases = []
+    for asig in lista_ordenada:
+        bloque = asig.bloque.nombre_bloque if asig.bloque else "Turno asignado"
+        h_ini = asig.hora_inicio.strftime("%H:%M")
+        h_fin = asig.hora_fin.strftime("%H:%M")
+
+        if estilo == "whatsapp":
+            frases.append(f"*{bloque}* (*{h_ini} - {h_fin} hrs*)")
+        elif estilo == "html":
+            frases.append(f"<strong>{bloque}</strong> (<strong>{h_ini} - {h_fin} hrs</strong>)")
+        else:
+            frases.append(f"{bloque} ({h_ini} - {h_fin} hrs)")
+
+    if len(frases) == 1:
+        return f"el bloque {frases[0]}"
+    elif len(frases) == 2:
+        return f"el bloque {frases[0]} y luego {frases[1]}"
+    else:
+        primeros = ", luego ".join(frases[:-1])
+        return f"el bloque {primeros} y luego {frases[-1]}"
+
+
 def build_whatsapp_message(
     cuidador: Cuidador,
-    asignacion: AsignacionTurno,
+    asignacion: Union[AsignacionTurno, List[AsignacionTurno]],
     actividades: List[ActividadMedica],
     medicamentos: Optional[List[MedicamentoHorario]] = None
 ) -> str:
     """
-    Crea el mensaje de WhatsApp para notificación del día, incluyendo
-    lista detallada de medicamentos, días y horarios activos correspondientes a la jornada del turno.
+    Crea el mensaje de WhatsApp para notificación del día, consolidando todos los turnos
+    del cuidador en la jornada e incluyendo lista detallada de medicamentos y actividades
+    correspondientes a cualquiera de sus turnos del día.
     """
-    hora_ini = asignacion.hora_inicio.strftime("%H:%M")
-    hora_fin = asignacion.hora_fin.strftime("%H:%M")
-    fecha_str = asignacion.fecha.strftime("%d/%m/%Y")
-    bloque_nombre = (
-        asignacion.bloque.nombre_bloque if asignacion.bloque else "Turno asignado"
-    )
+    if isinstance(asignacion, (list, tuple, set)):
+        lista = list(asignacion)
+    else:
+        lista = [asignacion]
+
+    lista_ordenada = sorted(lista, key=lambda a: a.hora_inicio)
+    fecha_obj = lista_ordenada[0].fecha if lista_ordenada else date.today()
+    fecha_str = fecha_obj.strftime("%d/%m/%Y")
     nombre = format_nombre_cuidador(cuidador)
+
+    turnos_wa = format_turnos_diarios_texto(lista_ordenada, estilo="whatsapp")
 
     mensaje = (
         f"🏥 *SISTEMA DE GESTIÓN DE CUIDADOS*\n\n"
         f"Hola *{nombre}*,\n\n"
-        f"Te informamos tu turno de cuidador/a para hoy (*{fecha_str}*):\n"
-        f"📌 *Bloque:* {bloque_nombre}\n"
-        f"⏰ *Horario Asignado:* {hora_ini} - {hora_fin} hrs\n"
+        f"Tu turno para el día de hoy *{fecha_str}* es en {turnos_wa}.\n"
     )
 
     # Detalle de Medicamentos de la Jornada
@@ -114,12 +157,10 @@ def build_whatsapp_message(
         mensaje += "\n📋 *Actividades Médicas en tu Turno:*\n"
         for idx, act in enumerate(actividades, 1):
             hora_act = act.hora.strftime("%H:%M")
-            nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
-            medico_info = (
-                f" (A cargo: {nombre_med})"
-                if act.medico_asignado
-                else ""
-            )
+            medico_info = ""
+            if act.medico_asignado:
+                nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
+                medico_info = f" (A cargo: {nombre_med})"
             mensaje += f"  {idx}. [{hora_act}] *{act.titulo}*{medico_info}"
             if act.descripcion:
                 mensaje += f" - {act.descripcion}"
@@ -222,7 +263,11 @@ def build_whatsapp_message_semanal(
 def enviar_notificaciones_del_dia(
     fecha_seleccionada: date, db: Session
 ) -> Dict[str, Any]:
-    """Envía notificaciones de actualización diaria por WhatsApp a cuidadores en turno hoy, cruzando estrictamente horarios."""
+    """
+    Envía notificaciones de actualización diaria por WhatsApp a cuidadores en turno hoy.
+    Consolida múltiples turnos de un mismo cuidador en un único mensaje y cruza estrictamente
+    las actividades y medicamentos correspondientes a cualquiera de sus turnos del día.
+    """
     asignaciones: List[AsignacionTurno] = (
         db.query(AsignacionTurno)
         .join(Cuidador)
@@ -247,42 +292,52 @@ def enviar_notificaciones_del_dia(
         .all()
     )
 
+    # Agrupar asignaciones por cuidador (solo activos)
+    asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
+    for asig in asignaciones:
+        if asig.cuidador and asig.cuidador.activo:
+            asigs_por_cuidador.setdefault(asig.id_cuidador, []).append(asig)
+
     resultados: Dict[str, Any] = {
         "fecha": fecha_seleccionada,
         "total_asignaciones": len(asignaciones),
+        "total_cuidadores": len(asigs_por_cuidador),
         "enviados": 0,
         "errores": 0,
         "detalles": [],
     }
 
-    if not asignaciones:
+    if not asigs_por_cuidador:
         return resultados
 
-    for asig in asignaciones:
-        if not asig.cuidador.activo:
-            continue
+    for id_cuidador, lista_asigs in asigs_por_cuidador.items():
+        lista_ordenada = sorted(lista_asigs, key=lambda a: a.hora_inicio)
+        cuidador = lista_ordenada[0].cuidador
 
         # Cruce estricto por horario del turno del cuidador:
-        # Solo se envían actividades y medicamentos que coincidan exactamente con su jornada
+        # Solo se envían actividades y medicamentos que coincidan con cualquiera de sus turnos de hoy
         acts_turno = [
             act for act in actividades_dia
-            if esta_en_jornada(act.hora, asig.hora_inicio, asig.hora_fin)
+            if any(esta_en_jornada(act.hora, a.hora_inicio, a.hora_fin) for a in lista_ordenada)
         ]
         meds_turno = [
             m for m in medicamentos_dia
-            if esta_en_jornada(m.hora, asig.hora_inicio, asig.hora_fin)
+            if any(esta_en_jornada(m.hora, a.hora_inicio, a.hora_fin) for a in lista_ordenada)
         ]
 
-        mensaje_texto = build_whatsapp_message(asig.cuidador, asig, acts_turno, meds_turno)
-        destino_whatsapp = format_whatsapp_number(asig.cuidador.telefono_whatsapp)
-        nombre_cuid = format_nombre_cuidador(asig.cuidador)
+        mensaje_texto = build_whatsapp_message(cuidador, lista_ordenada, acts_turno, meds_turno)
+        destino_whatsapp = format_whatsapp_number(cuidador.telefono_whatsapp)
+        nombre_cuid = format_nombre_cuidador(cuidador)
+
+        bloques_str = " / ".join([a.bloque.nombre_bloque if a.bloque else "Turno" for a in lista_ordenada])
+        horarios_str = " y ".join([f"{a.hora_inicio.strftime('%H:%M')} - {a.hora_fin.strftime('%H:%M')}" for a in lista_ordenada])
 
         detalle: Dict[str, Any] = {
-            "id_asignacion": asig.id_asignacion,
+            "id_asignacion": lista_ordenada[0].id_asignacion,
             "personal": f"{nombre_cuid} (Cuidador)",
-            "telefono": asig.cuidador.telefono_whatsapp,
-            "bloque": asig.bloque.nombre_bloque if asig.bloque else "Personalizado",
-            "horario": f"{asig.hora_inicio.strftime('%H:%M')} - {asig.hora_fin.strftime('%H:%M')}",
+            "telefono": cuidador.telefono_whatsapp,
+            "bloque": bloques_str,
+            "horario": horarios_str,
             "mensaje": mensaje_texto,
             "estado": "PENDIENTE",
             "detalle_error": None,
@@ -295,19 +350,23 @@ def enviar_notificaciones_del_dia(
                 to=destino_whatsapp,
             )
             logger.info(f"WhatsApp diario enviado a {destino_whatsapp}. SID: {message.sid}")
-            asig.estado_notificacion = "ENVIADO"
-            asig.fecha_envio_whatsapp = datetime.utcnow()
+            ahora = datetime.utcnow()
+            for a in lista_ordenada:
+                a.estado_notificacion = "ENVIADO"
+                a.fecha_envio_whatsapp = ahora
             detalle["estado"] = "ENVIADO"
             resultados["enviados"] += 1
         except Exception as exc:
             logger.error(f"Error enviando WhatsApp diario a {destino_whatsapp}: {exc}")
-            asig.estado_notificacion = "ERROR"
+            for a in lista_ordenada:
+                a.estado_notificacion = "ERROR"
             detalle["estado"] = "ERROR"
             detalle["detalle_error"] = str(exc)
             resultados["errores"] += 1
 
         db.commit()
-        db.refresh(asig)
+        for a in lista_ordenada:
+            db.refresh(a)
         resultados["detalles"].append(detalle)
 
     return resultados

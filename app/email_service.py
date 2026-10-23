@@ -8,7 +8,7 @@ Utiliza HTTPS (puerto 443) a través del cliente oficial de Resend.
 import os
 import logging
 from datetime import date, time, datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 from sqlalchemy.orm import Session, joinedload
 from dotenv import load_dotenv
 import resend
@@ -62,28 +62,74 @@ def esta_en_jornada(hora_med: time, hora_inicio: time, hora_fin: time) -> bool:
         return hora_med >= hora_inicio or hora_med <= hora_fin
 
 
+def format_turnos_diarios_texto(
+    asignaciones: Union[AsignacionTurno, List[AsignacionTurno]],
+    estilo: str = "texto"
+) -> str:
+    """
+    Formatea la descripción consolidada de los turnos de un cuidador para el día.
+    estilo: 'texto' (plano), 'whatsapp' (con asteriscos *negrita*), 'html' (con <strong>)
+    """
+    if isinstance(asignaciones, (list, tuple, set)):
+        lista = list(asignaciones)
+    else:
+        lista = [asignaciones]
+
+    if not lista:
+        return "sin turno asignado"
+
+    lista_ordenada = sorted(lista, key=lambda a: a.hora_inicio)
+
+    frases = []
+    for asig in lista_ordenada:
+        bloque = asig.bloque.nombre_bloque if asig.bloque else "Turno asignado"
+        h_ini = asig.hora_inicio.strftime("%H:%M")
+        h_fin = asig.hora_fin.strftime("%H:%M")
+
+        if estilo == "html":
+            frases.append(f"<strong>{bloque}</strong> (<strong>{h_ini} - {h_fin} hrs</strong>)")
+        elif estilo == "whatsapp":
+            frases.append(f"*{bloque}* (*{h_ini} - {h_fin} hrs*)")
+        else:
+            frases.append(f"{bloque} ({h_ini} - {h_fin} hrs)")
+
+    if len(frases) == 1:
+        return f"el bloque {frases[0]}"
+    elif len(frases) == 2:
+        return f"el bloque {frases[0]} y luego {frases[1]}"
+    else:
+        primeros = ", luego ".join(frases[:-1])
+        return f"el bloque {primeros} y luego {frases[-1]}"
+
+
 def construir_contenido_diario(
     cuidador: Cuidador,
-    asignacion: AsignacionTurno,
+    asignacion: Union[AsignacionTurno, List[AsignacionTurno]],
     actividades: List[ActividadMedica],
     medicamentos: Optional[List[MedicamentoHorario]] = None
 ) -> Tuple[str, str, str]:
     """
     Construye el asunto, texto plano y HTML del correo diario
-    según el formato requerido por el sistema, incluyendo lista detallada de
-    medicamentos, días y horarios activos correspondientes a la jornada del turno.
+    según el formato consolidado para uno o varios turnos en el día,
+    incluyendo lista detallada de medicamentos y actividades de los horarios asignados.
     """
+    if isinstance(asignacion, (list, tuple, set)):
+        lista = list(asignacion)
+    else:
+        lista = [asignacion]
+
     nombre = format_nombre_cuidador(cuidador)
-    fecha_str = asignacion.fecha.strftime("%d/%m/%Y")
-    bloque_nombre = asignacion.bloque.nombre_bloque if asignacion.bloque else "Turno asignado"
-    hora_ini = asignacion.hora_inicio.strftime("%H:%M")
-    hora_fin = asignacion.hora_fin.strftime("%H:%M")
+    fecha_obj = lista[0].fecha if lista else date.today()
+    fecha_str = fecha_obj.strftime("%d/%m/%Y")
+
+    turnos_txt = format_turnos_diarios_texto(lista, estilo="texto")
+    turnos_html = format_turnos_diarios_texto(lista, estilo="html")
 
     subject = f"MedTurnos Pro - Tu turno para hoy {fecha_str}"
 
     lineas_texto = [
         f"Hola {nombre},",
-        f"Tu turno para el día de hoy {fecha_str} es en el bloque {bloque_nombre} ({hora_ini} - {hora_fin}).",
+        f"Tu turno para el día de hoy {fecha_str} es en {turnos_txt}.",
         ""
     ]
 
@@ -165,7 +211,7 @@ def construir_contenido_diario(
                 <p style="font-size: 16px; margin-top: 0;">Hola <strong>{nombre}</strong>,</p>
                 <div style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 12px 16px; border-radius: 6px; margin: 16px 0;">
                     <p style="margin: 0; font-size: 14px; color: #0369a1;">
-                        Tu turno para el día de hoy <strong>{fecha_str}</strong> es en el bloque <strong>{bloque_nombre}</strong> (<strong>{hora_ini} - {hora_fin} hrs</strong>).
+                        Tu turno para el día de hoy <strong>{fecha_str}</strong> es en {turnos_html}.
                     </p>
                 </div>
                 <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">💊 Pauta de Medicamentos en tu Turno:</h3>
@@ -401,8 +447,8 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
         return resultado
 
     for cid, lista in asigs_por_cuidador.items():
-        cuid = lista[0].cuidador
-        asig_principal = lista[0]
+        lista_ordenada = sorted(lista, key=lambda a: a.hora_inicio)
+        cuid = lista_ordenada[0].cuidador
         nombre = format_nombre_cuidador(cuid)
 
         # 1. Validar que tenga correo
@@ -418,19 +464,19 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
             continue
 
         # 2. Cruce estricto por horario del turno del cuidador:
-        # Solo se envían actividades y medicamentos que coincidan exactamente con su jornada
+        # Solo se envían actividades y medicamentos que coincidan exactamente con cualquiera de sus jornadas de hoy
         acts_turno = [
             act for act in actividades_dia
-            if any(esta_en_jornada(act.hora, a.hora_inicio, a.hora_fin) for a in lista)
+            if any(esta_en_jornada(act.hora, a.hora_inicio, a.hora_fin) for a in lista_ordenada)
         ]
         meds_turno = [
             m for m in medicamentos_dia
-            if any(esta_en_jornada(m.hora, a.hora_inicio, a.hora_fin) for a in lista)
+            if any(esta_en_jornada(m.hora, a.hora_inicio, a.hora_fin) for a in lista_ordenada)
         ]
 
         # 3. Construir y enviar vía Resend HTTP API
         try:
-            subject, text, html = construir_contenido_diario(cuid, asig_principal, acts_turno, meds_turno)
+            subject, text, html = construir_contenido_diario(cuid, lista_ordenada, acts_turno, meds_turno)
             resend_resp = enviar_email_via_resend(cuid.mail, subject, text, html)
             resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
             logger.info(f"Correo diario enviado vía Resend a {cuid.mail}. ID: {resp_id}")

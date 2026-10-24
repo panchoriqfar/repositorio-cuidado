@@ -27,6 +27,8 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
 - **Respuesta Estructurada y Manejo de Excepciones**:
   - Todas las llamadas al servicio de envío capturan excepciones (`try/except`) y retornan respuestas JSON estructuradas con el estado explícito (`status: "success"` con su identificador `id`, o `status: "error"` con el detalle del fallo).
   - Endpoint de prueba disponible: `POST /api/admin/notificaciones/enviar-email-prueba`.
+- **Prevención de Agrupación de Conversaciones (Anti-Threading)**:
+  - Para evitar que proveedores como Gmail agrupen múltiples correos enviados el mismo día en un único hilo de conversación, el asunto (`subject`) incluye automáticamente una marca de tiempo dinámica con la hora exacta de emisión (ej. `MedTurnos Pro - Tu turno para hoy [14:35:10]`), garantizando que cada notificación se visualice como un correo independiente.
 - **Envío Semanal ("Enviar Correo Semanal")**:
   - Botón ubicado en la parte inferior derecha del horario, junto al botón de WhatsApp.
   - Recorre los cuidadores con turnos asignados en la semana y envía un resumen estructurado con sus días y bloques asignados, y sus actividades médicas y medicamentos programados agrupados por fármaco y actividad.

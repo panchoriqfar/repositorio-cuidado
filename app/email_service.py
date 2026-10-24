@@ -140,7 +140,8 @@ def construir_contenido_diario(
     turnos_txt = format_turnos_diarios_texto(lista, estilo="texto")
     turnos_html = format_turnos_diarios_texto(lista, estilo="html")
 
-    subject = f"MedTurnos Pro - Tu turno para hoy {fecha_str}"
+    hora_actual = datetime.now().strftime("%H:%M:%S")
+    subject = f"MedTurnos Pro - Tu turno para hoy [{hora_actual}]"
 
     lineas_texto = [
         f"Hola {nombre},",
@@ -310,7 +311,8 @@ def construir_contenido_semanal(
                     todos_medicamentos.append((asig.fecha, m))
 
     rango_str = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
-    subject = f"MedTurnos Pro - Planificación semanal de turnos ({rango_str})"
+    hora_actual = datetime.now().strftime("%H:%M:%S")
+    subject = f"MedTurnos Pro - Planificación semanal de turnos ({rango_str}) [{hora_actual}]"
 
     lineas_texto = [
         f"Hola {nombre},",
@@ -403,8 +405,6 @@ def construir_contenido_semanal(
     </body>
     </html>
     """
-
-    return subject, cuerpo_texto, cuerpo_html
 
     return subject, cuerpo_texto, cuerpo_html
 

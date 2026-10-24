@@ -148,7 +148,5 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
    - **Plataforma Web**: [http://localhost:8000](http://localhost:8000)
    - **Documentación Swagger API**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-#### 🔐 Credenciales del Superusuario por Defecto:
-- **Usuario**: `admin`
-- **Contraseña**: `admin1234`
-- **Rol**: `super_user`
+#### 🔐 Seguridad y Configuración de Acceso:
+Las credenciales de acceso inicial se configuran de manera segura mediante variables de entorno en el archivo `.env` (`SUPERUSER_USERNAME` y `SUPERUSER_PASSWORD`). Nunca compartas ni almacenes contraseñas en el repositorio público. Al ingresar por primera vez, el sistema exige obligatoriamente cambiar la contraseña predeterminada por una clave personalizada y segura.

@@ -19,16 +19,20 @@ Sistema integral de gestión de turnos para centros de atención, clínicas y se
 - **Rol eliminado por completo**: Se eliminó cualquier concepto de rol laboral en los cuidadores; todos son gestionados exclusivamente como cuidadores.
 
 ### 3. Notificaciones por Correo Electrónico vía API HTTP (Resend)
-Para garantizar la compatibilidad total con **Render**, Railway u otros entornos en la nube (donde los puertos SMTP salientes 25, 465 y 587 son bloqueados por los proveedores causando errores *Network is unreachable*), el sistema utiliza la **API REST HTTP oficial de Resend** (a través del puerto HTTPS 443 estándar):
-- **Configuración en Render / `.env`**:
-  - `RESEND_API_KEY`: Tu clave de API generada en [resend.com/api-keys](https://resend.com/api-keys).
-  - `RESEND_FROM`: Dirección del remitente (ej. `MedTurnos Pro <onboarding@resend.dev>` o tu dominio verificado).
+Para garantizar la compatibilidad total con **Render**, Railway u otros entornos en la nube (donde los puertos SMTP salientes 25, 465 y 587 son bloqueados por los proveedores causando errores *Network is unreachable*), el sistema utiliza la **API REST HTTP oficial de Resend** (a través del puerto HTTPS 443 estándar) y variables de entorno de producción:
+- **Configuración en Producción / Render / `.env`**:
+  - `RESEND_API_KEY`: Clave de API generada en [resend.com/api-keys](https://resend.com/api-keys) para autenticar el cliente de Resend (`resend.api_key`).
+  - `SENDER_EMAIL`: Dirección de correo del remitente verificado (por defecto `notificaciones@medturnospro.tech`).
+  - `RESEND_FROM`: Construcción del remitente con formato `Sistema MedTurnos <notificaciones@medturnospro.tech>`, garantizando que los correos se envíen desde el dominio verificado `@medturnospro.tech` y no desde la dirección de prueba de Resend (`onboarding@resend.dev`).
+- **Respuesta Estructurada y Manejo de Excepciones**:
+  - Todas las llamadas al servicio de envío capturan excepciones (`try/except`) y retornan respuestas JSON estructuradas con el estado explícito (`status: "success"` con su identificador `id`, o `status: "error"` con el detalle del fallo).
+  - Endpoint de prueba disponible: `POST /api/admin/notificaciones/enviar-email-prueba`.
 - **Envío Semanal ("Enviar Correo Semanal")**:
   - Botón ubicado en la parte inferior derecha del horario, junto al botón de WhatsApp.
-  - Recorre los cuidadores con turnos asignados en la semana y envía un resumen estructurado con sus días y bloques asignados, y sus actividades médicas programadas (o indica si no tiene actividades adicionales).
+  - Recorre los cuidadores con turnos asignados en la semana y envía un resumen estructurado con sus días y bloques asignados, y sus actividades médicas y medicamentos programados agrupados por fármaco y actividad.
 - **Envío Diario ("Enviar Correo Diario")**:
   - Botón ubicado en la barra de navegación superior, junto al botón de Actualización Diaria de WhatsApp.
-  - Informa al cuidador su turno del día (fecha, bloque, horario inicio/fin) y el detalle de actividades médicas programadas para la jornada.
+  - Informa al cuidador su turno o consolidado de turnos del día (fecha, bloque, horario inicio/fin), pauta de medicamentos agrupada por horario y detalle de actividades médicas programadas para la jornada.
 - **Robustez y Tolerancia a Fallos**:
   - Solo envía a cuidadores con correo válido en `cuidadores.mail`.
   - Si un cuidador no tiene correo registrado o el formato es inválido, se registra como `OMITIDO`.
@@ -120,6 +124,7 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
 ### Notificaciones por Correo Electrónico (Resend HTTP API)
 - `POST /api/admin/notificaciones/enviar-email-dia`: Envía notificación diaria por email con turnos y actividades a cuidadores en turno.
 - `POST /api/admin/notificaciones/enviar-email-semana`: Envía planificación semanal consolidada por email a todos los cuidadores de la semana.
+- `POST /api/admin/notificaciones/enviar-email-prueba`: Envía un correo de prueba vía Resend API y retorna el estado (`status: success` / `status: error`).
 
 ---
 

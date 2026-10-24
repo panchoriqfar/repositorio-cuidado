@@ -215,6 +215,13 @@ class NotificacionEmailResponse(BaseModel):
     detalles: List[DetalleEnvioEmail]
 
 
+class EnvioEmailPruebaRequest(BaseModel):
+    destinatario: str
+    asunto: Optional[str] = "MedTurnos Pro - Correo de Prueba"
+    mensaje: Optional[str] = "Este es un correo de prueba de MedTurnos Pro desde producción."
+    html: Optional[str] = None
+
+
 # --- Esquemas de Gestión de Medicamentos ---
 class MedicamentoHorarioBase(BaseModel):
     dia: date

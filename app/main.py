@@ -832,6 +832,24 @@ def enviar_email_semana_completa(
     return email_service.enviar_correos_semana_completa(fecha_base, db)
 
 
+@app.post("/api/admin/notificaciones/enviar-email-prueba")
+def enviar_email_prueba(
+    payload: schemas.EnvioEmailPruebaRequest,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user)
+):
+    """
+    Envía un correo de prueba vía Resend API utilizando las variables de entorno de producción.
+    Retorna respuesta JSON estructurada con status: success / status: error.
+    """
+    resultado = email_service.enviar_email_via_resend(
+        destinatario=payload.destinatario,
+        asunto=payload.asunto or "MedTurnos Pro - Correo de Prueba",
+        texto=payload.mensaje or "Este es un correo de prueba de MedTurnos Pro desde producción.",
+        html=payload.html or f"<p>{payload.mensaje or 'Este es un correo de prueba de MedTurnos Pro desde producción.'}</p>"
+    )
+    return resultado
+
+
 # ==============================================================================
 # --- GESTIÓN DE MEDICAMENTOS ---
 # ==============================================================================

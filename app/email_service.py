@@ -20,9 +20,12 @@ load_dotenv()
 logger = logging.getLogger("email_service")
 logging.basicConfig(level=logging.INFO)
 
-# Configuración de Resend
+# Configuración de Resend y Remitente de Producción
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
-RESEND_FROM = os.getenv("RESEND_FROM", "MedTurnos Pro <onboarding@resend.dev>").strip()
+DEFAULT_SENDER_EMAIL = "notificaciones@medturnospro.tech"
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", DEFAULT_SENDER_EMAIL).strip() or DEFAULT_SENDER_EMAIL
+DEFAULT_FROM_NAME = "Sistema MedTurnos"
+RESEND_FROM = os.getenv("RESEND_FROM", f"{DEFAULT_FROM_NAME} <{SENDER_EMAIL}>").strip()
 
 if RESEND_API_KEY and not RESEND_API_KEY.startswith("re_tu_api_key"):
     resend.api_key = RESEND_API_KEY
@@ -60,6 +63,18 @@ def esta_en_jornada(hora_med: time, hora_inicio: time, hora_fin: time) -> bool:
     else:
         # Turno nocturno que cruza medianoche (ej: 21:00 a 07:00)
         return hora_med >= hora_inicio or hora_med <= hora_fin
+
+
+def esta_en_jornada_asig(dia_item: date, hora_item: time, asig: AsignacionTurno) -> bool:
+    """Verifica si la fecha y hora corresponden al rango exacto de la jornada del turno asignado."""
+    dt_item = datetime.combine(dia_item, hora_item)
+    dt_inicio = datetime.combine(asig.fecha, asig.hora_inicio)
+    if asig.hora_inicio <= asig.hora_fin:
+        dt_fin = datetime.combine(asig.fecha, asig.hora_fin)
+    else:
+        # Turno nocturno que cruza medianoche (ej: 21:00 a 07:00 del día siguiente)
+        dt_fin = datetime.combine(asig.fecha + timedelta(days=1), asig.hora_fin)
+    return dt_inicio <= dt_item <= dt_fin
 
 
 def format_turnos_diarios_texto(
@@ -134,32 +149,57 @@ def construir_contenido_diario(
     ]
 
     # Sección de Medicamentos de la Jornada
+    meds_agrupados: Dict[str, Dict[str, Any]] = {}
     if medicamentos:
         lineas_texto.append("Medicamentos a administrar en tu turno:")
         for med in medicamentos:
+            nom_med = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
+            if nom_med not in meds_agrupados:
+                medico_info = ""
+                if med.tratamiento and med.tratamiento.personal_medico:
+                    pm = med.tratamiento.personal_medico
+                    nombre_prof = f"{pm.nombre} {pm.apellido or ''}".strip()
+                    medico_info = f" - Indicado por: {nombre_prof}"
+                meds_agrupados[nom_med] = {
+                    "horas": [],
+                    "medico_info": medico_info
+                }
             h_med = med.hora.strftime("%H:%M")
-            d_med = med.dia.strftime("%d/%m/%Y")
-            n_med = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
-            medico_info = ""
-            if med.tratamiento and med.tratamiento.personal_medico:
-                pm = med.tratamiento.personal_medico
-                nombre_prof = f"{pm.nombre} {pm.apellido or ''}".strip()
-                medico_info = f" - Indicado por: {nombre_prof}"
-            lineas_texto.append(f"- A las {h_med} hrs: {n_med} (Día: {d_med}{medico_info}).")
+            if h_med not in meds_agrupados[nom_med]["horas"]:
+                meds_agrupados[nom_med]["horas"].append(h_med)
+
+        for nom_med, data in meds_agrupados.items():
+            horas_str = ", ".join(data["horas"])
+            lineas_texto.append(f"- {nom_med}: {horas_str} hrs{data['medico_info']}.")
         lineas_texto.append("")
     else:
         lineas_texto.append("No tienes administración de medicamentos programada para tu turno.")
         lineas_texto.append("")
 
     # Sección de Actividades Médicas
+    acts_agrupadas: Dict[str, Dict[str, Any]] = {}
     if actividades:
         lineas_texto.append("Tus actividades médicas programadas en el turno son:")
         for act in actividades:
-            hora_act = act.hora.strftime("%H:%M")
-            desc = act.titulo
-            if act.descripcion:
-                desc += f" - {act.descripcion}"
-            lineas_texto.append(f"- A las {hora_act} tienes {desc}.")
+            tit = act.titulo.strip()
+            if tit not in acts_agrupadas:
+                medico_info = ""
+                if act.medico_asignado:
+                    nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
+                    medico_info = f" (A cargo: {nombre_med})"
+                desc_info = f" - {act.descripcion.strip()}" if act.descripcion else ""
+                acts_agrupadas[tit] = {
+                    "horas": [],
+                    "medico_info": medico_info,
+                    "desc_info": desc_info
+                }
+            h_act = act.hora.strftime("%H:%M")
+            if h_act not in acts_agrupadas[tit]["horas"]:
+                acts_agrupadas[tit]["horas"].append(h_act)
+
+        for tit, data in acts_agrupadas.items():
+            horas_str = ", ".join(data["horas"])
+            lineas_texto.append(f"- {tit}: {horas_str} hrs{data['medico_info']}{data['desc_info']}.")
     else:
         lineas_texto.append("No tienes actividades médicas programadas durante tu horario de turno. ¡Que tengas un excelente turno!")
 
@@ -169,16 +209,10 @@ def construir_contenido_diario(
     medicamentos_html = ""
     if medicamentos:
         medicamentos_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
-        for med in medicamentos:
-            h_med = med.hora.strftime("%H:%M")
-            d_med = med.dia.strftime("%d/%m/%Y")
-            n_med = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
-            medico_info = ""
-            if med.tratamiento and med.tratamiento.personal_medico:
-                pm = med.tratamiento.personal_medico
-                nombre_prof = f"{pm.nombre} {pm.apellido or ''}".strip()
-                medico_info = f" &bull; Indicado por: {nombre_prof}"
-            medicamentos_html += f"<li>A las <strong>{h_med} hrs</strong>: <strong>{n_med}</strong> (Día: {d_med}{medico_info})</li>"
+        for nom_med, data in meds_agrupados.items():
+            horas_str = ", ".join(data["horas"])
+            medico_html = f" <span style='color: #64748b;'>&bull; Indicado por: {data['medico_info'].replace(' - Indicado por: ', '')}</span>" if data["medico_info"] else ""
+            medicamentos_html += f"<li><strong>{nom_med}</strong>: <strong>{horas_str} hrs</strong>{medico_html}</li>"
         medicamentos_html += "</ul>"
     else:
         medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes administración de medicamentos programada para tu turno.</p>"
@@ -187,12 +221,11 @@ def construir_contenido_diario(
     actividades_html = ""
     if actividades:
         actividades_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
-        for act in actividades:
-            hora_act = act.hora.strftime("%H:%M")
-            desc = f"<strong>{act.titulo}</strong>"
-            if act.descripcion:
-                desc += f" &bull; {act.descripcion}"
-            actividades_html += f"<li>A las <strong>{hora_act}</strong> tienes {desc}.</li>"
+        for tit, data in acts_agrupadas.items():
+            horas_str = ", ".join(data["horas"])
+            medico_html = f" <span style='color: #64748b;'>&bull; {data['medico_info'].strip(' ()')}</span>" if data["medico_info"] else ""
+            desc_html = f" &bull; {data['desc_info'].replace(' - ', '')}" if data["desc_info"] else ""
+            actividades_html += f"<li><strong>{tit}</strong>: <strong>{horas_str} hrs</strong>{medico_html}{desc_html}</li>"
         actividades_html += "</ul>"
     else:
         actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes actividades médicas programadas durante tu horario de turno. ¡Que tengas un excelente turno!</p>"
@@ -285,26 +318,34 @@ def construir_contenido_semanal(
         ""
     ]
 
+    meds_sem_map: Dict[Tuple[date, str], List[str]] = {}
     if todos_medicamentos:
         lineas_texto.append("Medicamentos a administrar en tus turnos:")
         for fecha_med, med in todos_medicamentos:
+            n_str = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
+            h_str = med.hora.strftime("%H:%M")
+            if h_str not in meds_sem_map.setdefault((fecha_med, n_str), []):
+                meds_sem_map[(fecha_med, n_str)].append(h_str)
+
+        for (fecha_med, n_str), h_list in meds_sem_map.items():
             dia_nom = DIAS_ESPANOL.get(fecha_med.weekday(), "")
             f_str = f"{dia_nom} {fecha_med.strftime('%d/%m/%Y')}"
-            h_str = med.hora.strftime("%H:%M")
-            n_str = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
-            lineas_texto.append(f"- El día {f_str} a las {h_str} hrs: {n_str}.")
+            lineas_texto.append(f"- El día {f_str}: {n_str} a las {', '.join(h_list)} hrs.")
         lineas_texto.append("")
 
+    acts_sem_map: Dict[Tuple[date, str], List[str]] = {}
     if todas_actividades:
         lineas_texto.append("Tus actividades médicas programadas en turno son:")
         for fecha_act, act in todas_actividades:
+            tit = act.titulo.strip()
+            h_str = act.hora.strftime("%H:%M")
+            if h_str not in acts_sem_map.setdefault((fecha_act, tit), []):
+                acts_sem_map[(fecha_act, tit)].append(h_str)
+
+        for (fecha_act, tit), h_list in acts_sem_map.items():
             dia_nom = DIAS_ESPANOL.get(fecha_act.weekday(), "")
             f_str = f"{dia_nom} {fecha_act.strftime('%d/%m/%Y')}"
-            h_str = act.hora.strftime("%H:%M")
-            desc = act.titulo
-            if act.descripcion:
-                desc += f" ({act.descripcion})"
-            lineas_texto.append(f"- El día {f_str} a las {h_str} tienes {desc}.")
+            lineas_texto.append(f"- El día {f_str}: {tit} a las {', '.join(h_list)} hrs.")
     else:
         lineas_texto.append("No tienes actividades médicas programadas en tus horarios de turno para esta semana.")
 
@@ -315,12 +356,10 @@ def construir_contenido_semanal(
     medicamentos_html = ""
     if todos_medicamentos:
         medicamentos_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
-        for fecha_med, med in todos_medicamentos:
+        for (fecha_med, n_str), h_list in meds_sem_map.items():
             dia_nom = DIAS_ESPANOL.get(fecha_med.weekday(), "")
             f_str = f"{dia_nom} {fecha_med.strftime('%d/%m/%Y')}"
-            h_str = med.hora.strftime("%H:%M")
-            n_str = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
-            medicamentos_html += f"<li>El día <strong>{f_str}</strong> a las <strong>{h_str} hrs</strong>: {n_str}</li>"
+            medicamentos_html += f"<li>El día <strong>{f_str}</strong>: <strong>{n_str}</strong> a las <strong>{', '.join(h_list)} hrs</strong></li>"
         medicamentos_html += "</ul>"
     else:
         medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 13px;'>No tienes administración de medicamentos programada en tus turnos.</p>"
@@ -328,14 +367,10 @@ def construir_contenido_semanal(
     actividades_html = ""
     if todas_actividades:
         actividades_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
-        for fecha_act, act in todas_actividades:
+        for (fecha_act, tit), h_list in acts_sem_map.items():
             dia_nom = DIAS_ESPANOL.get(fecha_act.weekday(), "")
             f_str = f"{dia_nom} {fecha_act.strftime('%d/%m/%Y')}"
-            h_str = act.hora.strftime("%H:%M")
-            desc = f"<strong>{act.titulo}</strong>"
-            if act.descripcion:
-                desc += f" &bull; {act.descripcion}"
-            actividades_html += f"<li>El día <strong>{f_str}</strong> a las <strong>{h_str}</strong> tienes {desc}.</li>"
+            actividades_html += f"<li>El día <strong>{f_str}</strong>: <strong>{tit}</strong> a las <strong>{', '.join(h_list)} hrs</strong></li>"
         actividades_html += "</ul>"
     else:
         actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes actividades médicas programadas en tus horarios de turno para esta semana.</p>"
@@ -378,16 +413,29 @@ def enviar_email_via_resend(destinatario: str, asunto: str, texto: str, html: st
     """
     Envía un correo electrónico a través de la API REST HTTPS de Resend (puerto 443).
     Bypassa cualquier bloqueo de puertos SMTP (25, 465, 587) en Render o la nube.
+    Utiliza las variables de entorno de producción:
+      - RESEND_API_KEY para autenticar el cliente.
+      - SENDER_EMAIL (por defecto: notificaciones@medturnospro.tech)
+      - "from" con formato: f"Sistema MedTurnos <{sender_email}>"
+    Captura excepciones y retorna una respuesta JSON estructurada con status: success / status: error.
     """
-    api_key_actual = os.getenv("RESEND_API_KEY", "").strip()
+    api_key_actual = os.getenv("RESEND_API_KEY", RESEND_API_KEY).strip()
     if not api_key_actual or api_key_actual.startswith("re_tu_api_key"):
-        raise RuntimeError(
+        error_msg = (
             "RESEND_API_KEY no está configurada o contiene el valor de ejemplo. "
-            "Por favor genera tu API Key en https://resend.com y agrégala a las variables de entorno de Render (.env)."
+            "Por favor genera tu API Key en https://resend.com y agrégala a las variables de entorno de producción (.env)."
         )
+        logger.error(error_msg)
+        return {
+            "status": "error",
+            "error": error_msg,
+            "detail": error_msg
+        }
 
     resend.api_key = api_key_actual
-    from_address = os.getenv("RESEND_FROM", RESEND_FROM).strip()
+
+    sender_email = os.getenv("SENDER_EMAIL", SENDER_EMAIL).strip() or DEFAULT_SENDER_EMAIL
+    from_address = os.getenv("RESEND_FROM", f"Sistema MedTurnos <{sender_email}>").strip()
 
     params: resend.Emails.SendParams = {
         "from": from_address,
@@ -397,7 +445,22 @@ def enviar_email_via_resend(destinatario: str, asunto: str, texto: str, html: st
         "html": html,
     }
 
-    return resend.Emails.send(params)
+    try:
+        response = resend.Emails.send(params)
+        resp_id = getattr(response, "id", None) or (response.get("id") if isinstance(response, dict) else "")
+        logger.info(f"Correo entregado exitosamente vía Resend a {destinatario}. ID: {resp_id}")
+        return {
+            "status": "success",
+            "id": resp_id,
+            "data": response
+        }
+    except Exception as exc:
+        logger.error(f"Error al enviar correo vía Resend a {destinatario}: {exc}")
+        return {
+            "status": "error",
+            "error": str(exc),
+            "detail": str(exc)
+        }
 
 
 def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
@@ -413,10 +476,12 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
         .all()
     )
 
+    dia_siguiente = fecha_objetivo + timedelta(days=1)
+
     actividades_dia: List[ActividadMedica] = (
         db.query(ActividadMedica)
-        .filter(ActividadMedica.fecha == fecha_objetivo)
-        .order_by(ActividadMedica.hora.asc())
+        .filter(ActividadMedica.fecha.in_([fecha_objetivo, dia_siguiente]))
+        .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
         .all()
     )
 
@@ -424,8 +489,8 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
         db.query(MedicamentoHorario)
         .join(TratamientoMedicamento)
         .options(joinedload(MedicamentoHorario.tratamiento).joinedload(TratamientoMedicamento.personal_medico))
-        .filter(MedicamentoHorario.dia == fecha_objetivo)
-        .order_by(MedicamentoHorario.hora.asc())
+        .filter(MedicamentoHorario.dia.in_([fecha_objetivo, dia_siguiente]))
+        .order_by(MedicamentoHorario.dia.asc(), MedicamentoHorario.hora.asc())
         .all()
     )
 
@@ -467,17 +532,20 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
         # Solo se envían actividades y medicamentos que coincidan exactamente con cualquiera de sus jornadas de hoy
         acts_turno = [
             act for act in actividades_dia
-            if any(esta_en_jornada(act.hora, a.hora_inicio, a.hora_fin) for a in lista_ordenada)
+            if any(esta_en_jornada_asig(act.fecha, act.hora, a) for a in lista_ordenada)
         ]
         meds_turno = [
             m for m in medicamentos_dia
-            if any(esta_en_jornada(m.hora, a.hora_inicio, a.hora_fin) for a in lista_ordenada)
+            if any(esta_en_jornada_asig(m.dia, m.hora, a) for a in lista_ordenada)
         ]
 
         # 3. Construir y enviar vía Resend HTTP API
         try:
             subject, text, html = construir_contenido_diario(cuid, lista_ordenada, acts_turno, meds_turno)
             resend_resp = enviar_email_via_resend(cuid.mail, subject, text, html)
+            if isinstance(resend_resp, dict) and resend_resp.get("status") == "error":
+                raise RuntimeError(resend_resp.get("error") or "Error enviando correo vía Resend API")
+
             resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
             logger.info(f"Correo diario enviado vía Resend a {cuid.mail}. ID: {resp_id}")
 
@@ -597,6 +665,9 @@ def enviar_correos_semana_completa(fecha_base: date, db: Session) -> Dict[str, A
                 medicamentos_por_fecha=medicamentos_por_fecha
             )
             resend_resp = enviar_email_via_resend(cuid.mail, subject, text, html)
+            if isinstance(resend_resp, dict) and resend_resp.get("status") == "error":
+                raise RuntimeError(resend_resp.get("error") or "Error enviando correo vía Resend API")
+
             resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
             logger.info(f"Correo semanal enviado vía Resend a {cuid.mail}. ID: {resp_id}")
 

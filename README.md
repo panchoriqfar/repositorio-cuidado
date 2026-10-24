@@ -77,22 +77,6 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
   - **Descargar JPG** optimizado.
   - **Copiar Imagen al Portapapeles** para pegar directamente con `Ctrl+V` en WhatsApp Web o chat.
 
-### 9. Interfaz Web Totalmente Responsiva (Mobile-First)
-- **Viewport**: Etiqueta `<meta name="viewport" content="width=device-width, initial-scale=1.0">` configurada para escalar correctamente en smartphones y tablets.
-- **Menú Hamburguesa y Navegación Móvil (Sidebar)**:
-  - Botón de cabecera con icono de hamburguesa (`block md:hidden`), accesible exclusivamente en pantallas móviles.
-  - Barra lateral (Sidebar) oculta por defecto en móviles (`hidden md:block`), que emerge como menú flotante (`fixed inset-y-0 left-0 z-50 w-72 shadow-2xl`) con telón de fondo semitransparente (`sidebarBackdrop`).
-  - Control de apertura y cierre mediante la función JavaScript `toggleSidebar()`, compatible con cierre por clic exterior, selección de elementos y tecla `Escape`.
-- **Tablas y Cuadrante con Scroll Horizontal Fluido**:
-  - La matriz del cuadrante semanal, las tarjetas de actividades médicas y la pauta de medicamentos están envueltos en contenedores fluidos con scroll horizontal:
-    ```html
-    <div class="overflow-x-auto w-full shadow-md rounded-lg">...</div>
-    ```
-  - Evita desbordamientos y recortes visuales en pantallas estrechas sin perder la legibilidad de turnos y cuidadores.
-- **Layouts Generales Adaptables**:
-  - Los contenedores principales pasan dinámicamente de columnas apiladas en móviles a filas ordenadas en pantallas medianas y grandes (`flex flex-col md:flex-row gap-4`).
-  - Formularios, modales y barras de control semanal optimizados con controles táctiles de tamaño ergonómico.
-
 ---
 
 ## 🛠️ Stack Tecnológico

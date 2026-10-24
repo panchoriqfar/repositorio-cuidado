@@ -70,20 +70,6 @@ async function checkAuth() {
             barraWhatsappSemanal.classList.remove("flex");
         }
         loginBtn.classList.remove("hidden");
-
-        // Sincronizar estado en la barra lateral (Sidebar móvil/desktop)
-        const sidebarStatusDot = document.getElementById("sidebarStatusDot");
-        const sidebarUserContent = document.getElementById("sidebarUserContent");
-        const sidebarLoginBtn = document.getElementById("sidebarLoginBtn");
-        const sidebarAdminActions = document.getElementById("sidebarAdminActions");
-        const sidebarBtnUsuarios = document.getElementById("sidebarBtnUsuarios");
-
-        if (sidebarStatusDot) sidebarStatusDot.className = "w-2 h-2 rounded-full bg-slate-400";
-        if (sidebarUserContent) sidebarUserContent.textContent = "Vista Pública";
-        if (sidebarLoginBtn) sidebarLoginBtn.classList.remove("hidden");
-        if (sidebarAdminActions) sidebarAdminActions.classList.add("hidden");
-        if (sidebarBtnUsuarios) sidebarBtnUsuarios.classList.add("hidden");
-
         return false;
     }
 
@@ -157,34 +143,6 @@ async function checkAuth() {
 
             loginBtn.classList.add("hidden");
 
-            // Sincronizar estado en la barra lateral (Sidebar móvil/desktop)
-            const sidebarStatusDot = document.getElementById("sidebarStatusDot");
-            const sidebarUserContent = document.getElementById("sidebarUserContent");
-            const sidebarLoginBtn = document.getElementById("sidebarLoginBtn");
-            const sidebarAdminActions = document.getElementById("sidebarAdminActions");
-            const sidebarBtnUsuarios = document.getElementById("sidebarBtnUsuarios");
-
-            if (sidebarStatusDot) sidebarStatusDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
-            if (sidebarUserContent) {
-                sidebarUserContent.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <span class="font-bold text-slate-900">${user.username}</span>
-                        <span class="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full ${esSuper ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}">
-                            ${esSuper ? 'super_user' : 'admin'}
-                        </span>
-                    </div>
-                `;
-            }
-            if (sidebarLoginBtn) sidebarLoginBtn.classList.add("hidden");
-            if (sidebarAdminActions) sidebarAdminActions.classList.remove("hidden");
-            if (sidebarBtnUsuarios) {
-                if (esSuper) {
-                    sidebarBtnUsuarios.classList.remove("hidden");
-                } else {
-                    sidebarBtnUsuarios.classList.add("hidden");
-                }
-            }
-
             // Verificar si el usuario debe cambiar su contraseña (primer login)
             if (user.must_change_password) {
                 openCambiarPasswordModal(true);
@@ -239,38 +197,6 @@ function logoutAdmin() {
     removeToken();
     window.location.reload();
 }
-
-// --- MENÚ HAMBURGUESA Y NAVEGACIÓN MÓVIL (SIDEBAR) ---
-function toggleSidebar(forceState) {
-    const sidebar = document.getElementById("appSidebar");
-    const backdrop = document.getElementById("sidebarBackdrop");
-    if (!sidebar) return;
-
-    // Detectar si está abierto en modo flotante móvil
-    const isFloatingOpen = !sidebar.classList.contains("hidden") && sidebar.classList.contains("fixed");
-    const nextState = (typeof forceState === "boolean") ? forceState : !isFloatingOpen;
-
-    if (nextState) {
-        // Mostrar menú lateral flotante en móvil
-        sidebar.classList.remove("hidden");
-        sidebar.classList.add("fixed", "inset-y-0", "left-0", "z-50", "w-72", "shadow-2xl", "flex", "flex-col");
-        if (backdrop) backdrop.classList.remove("hidden");
-        document.body.classList.add("overflow-hidden");
-    } else {
-        // Ocultar menú lateral flotante en móvil
-        sidebar.classList.remove("fixed", "inset-y-0", "left-0", "z-50", "w-72", "shadow-2xl", "flex", "flex-col");
-        sidebar.classList.add("hidden");
-        if (backdrop) backdrop.classList.add("hidden");
-        document.body.classList.remove("overflow-hidden");
-    }
-}
-
-// Cerrar sidebar flotante con la tecla Escape
-document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-        toggleSidebar(false);
-    }
-});
 
 
 // --- GESTIÓN DE FECHAS ---

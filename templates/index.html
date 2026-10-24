@@ -38,18 +38,13 @@
     <!-- BARRA DE NAVEGACIÓN SUPERIOR -->
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center space-x-2 sm:space-x-3">
-                <!-- Botón de Menú Hamburguesa Móvil (Visible solo en pantallas pequeñas: block md:hidden) -->
-                <button id="btnMobileMenu" onclick="toggleSidebar()" class="p-2 -ml-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 block md:hidden focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors" aria-label="Abrir menú de navegación">
-                    <i class="fa-solid fa-bars text-xl"></i>
-                </button>
-
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 shrink-0">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
                     <i class="fa-solid fa-heart-pulse text-xl"></i>
                 </div>
                 <div>
-                    <h1 class="text-base sm:text-lg font-bold text-slate-900 leading-tight">MedTurnos Pro</h1>
-                    <p class="text-[11px] sm:text-xs text-slate-500">Turnos de Cuidadores y Actividades Médicas</p>
+                    <h1 class="text-lg font-bold text-slate-900 leading-tight">MedTurnos Pro</h1>
+                    <p class="text-xs text-slate-500">Turnos de Cuidadores y Actividades Médicas</p>
                 </div>
             </div>
 
@@ -61,7 +56,7 @@
                     <span id="adminUsername">Admin</span>
                 </div>
 
-                <div id="adminQuickActions" class="hidden md:flex items-center space-x-1.5 sm:space-x-2">
+                <div id="adminQuickActions" class="hidden items-center space-x-1.5 sm:space-x-2">
                     <button id="btnNavUsuarios" onclick="openUsuariosModal()" class="hidden px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition-all items-center gap-1.5" title="Gestión de Usuarios y Roles (Exclusivo Super Admin)">
                         <i class="fa-solid fa-users-gear text-sm"></i>
                         <span>Usuarios</span>
@@ -104,284 +99,167 @@
         </div>
     </header>
 
-    <!-- BACKDROP PARA MENÚ LATERAL MÓVIL -->
-    <div id="sidebarBackdrop" onclick="toggleSidebar(false)" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden md:hidden transition-opacity"></div>
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-    <!-- CONTENEDOR PRINCIPAL: SIDEBAR RESPONSIVO + CONTENIDO -->
-    <div class="flex flex-col md:flex-row flex-1 w-full min-h-0">
-
-        <!-- BARRA LATERAL (SIDEBAR): Oculta por defecto en móviles (hidden md:block), visible flotante al abrir menú -->
-        <aside id="appSidebar" class="hidden md:block md:w-64 md:shrink-0 bg-white border-r border-slate-200 p-4 space-y-6 md:sticky md:top-16 md:h-[calc(100vh-4rem)] md:overflow-y-auto">
-            <!-- Encabezado Sidebar Móvil (Visible solo en pantallas pequeñas) -->
-            <div class="flex items-center justify-between pb-3 border-b border-slate-100 md:hidden">
-                <div class="flex items-center space-x-2.5">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-teal-500 flex items-center justify-center text-white shadow-sm">
-                        <i class="fa-solid fa-heart-pulse text-sm"></i>
-                    </div>
-                    <div>
-                        <span class="font-bold text-slate-900 text-sm block">MedTurnos Pro</span>
-                        <span class="text-[10px] text-slate-400 block -mt-0.5">Menú de Navegación</span>
-                    </div>
-                </div>
-                <button onclick="toggleSidebar(false)" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" aria-label="Cerrar menú">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+        <!-- BARRA DE CONTROL DE FECHA SEMANAL -->
+        <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <button onclick="navegarSemana(-7)" title="Semana Anterior" class="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
+                    <i class="fa-solid fa-chevron-left"></i>
                 </button>
+                <button onclick="irSemanaActual()" class="px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors">
+                    Esta Semana
+                </button>
+                <button onclick="navegarSemana(7)" title="Semana Siguiente" class="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+
+                <div class="pl-2">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold block">Cuadrante de Cuidadores</span>
+                    <span id="rangoSemanaTexto" class="text-base sm:text-lg font-bold text-slate-900">Cargando fechas...</span>
+                </div>
             </div>
 
-            <!-- Estado de Sesión / Perfil en Sidebar -->
-            <div class="space-y-2">
-                <div id="sidebarUserSection" class="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Estado</span>
-                        <span id="sidebarStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-                    </div>
-                    <div id="sidebarUserContent" class="mt-1 text-xs font-semibold text-slate-700">
-                        Vista Pública
-                    </div>
-                </div>
-                <button id="sidebarLoginBtn" onclick="toggleSidebar(false); openLoginModal()" class="w-full py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-lock text-xs"></i>
-                    <span>Iniciar Sesión</span>
+            <!-- Filtro de fecha y botón admin de asignación -->
+            <div class="flex items-center space-x-2 w-full md:w-auto justify-end">
+                <input type="date" id="datePicker" onchange="seleccionarFecha(this.value)" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-slate-50">
+                
+                <button type="button" onclick="abrirModalGenerarImagen()" id="btnTopGenerarImagen" class="px-3.5 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5" title="Generar y descargar imagen artística del horario semanal">
+                    <i class="fa-solid fa-file-image"></i>
+                    <span class="hidden sm:inline">Generar Imagen</span>
+                </button>
+
+                <button id="btnGestionUsuarios" onclick="openUsuariosModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5" title="Gestionar Usuarios y Roles">
+                    <i class="fa-solid fa-users-gear"></i>
+                    <span>Usuarios</span>
+                </button>
+
+                <button id="btnNuevaAsignacion" onclick="openAsignacionModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Asignar Turno Cuidador</span>
                 </button>
             </div>
+        </div>
 
-            <!-- Navegación de Secciones Rápidas -->
-            <nav class="space-y-1">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 block mb-1">Secciones</span>
-                <a href="#seccionCuadrante" onclick="toggleSidebar(false)" class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-brand-600 hover:bg-brand-50 transition-colors">
-                    <i class="fa-regular fa-calendar-days text-brand-600 w-4 text-center"></i>
-                    <span>Horario Semanal</span>
-                </a>
-                <a href="#seccionActividades" onclick="toggleSidebar(false)" class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-teal-600 hover:bg-teal-50 transition-colors">
-                    <i class="fa-solid fa-stethoscope text-teal-600 w-4 text-center"></i>
-                    <span>Actividades Médicas</span>
-                </a>
-                <a href="#seccionMedicamentos" onclick="toggleSidebar(false)" class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-rose-600 hover:bg-rose-50 transition-colors">
-                    <i class="fa-solid fa-pills text-rose-500 w-4 text-center"></i>
-                    <span>Medicamentos</span>
-                </a>
-            </nav>
-
-            <!-- Acciones Administrativas (Se sincronizan con la sesión) -->
-            <div id="sidebarAdminActions" class="space-y-1 hidden">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700 px-2 block mb-1">Gestión Admin</span>
-                <button id="sidebarBtnUsuarios" onclick="toggleSidebar(false); openUsuariosModal()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 hover:bg-indigo-50 transition-colors hidden">
-                    <i class="fa-solid fa-users-gear text-indigo-600 w-4 text-center"></i>
-                    <span>Usuarios y Roles</span>
-                </button>
-                <button onclick="toggleSidebar(false); openCuidadoresModal()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-brand-600 hover:bg-brand-50 transition-colors">
-                    <i class="fa-solid fa-hands-holding-child text-brand-600 w-4 text-center"></i>
-                    <span>Gestionar Cuidadores</span>
-                </button>
-                <button onclick="toggleSidebar(false); openMedicosModal()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-teal-600 hover:bg-teal-50 transition-colors">
-                    <i class="fa-solid fa-user-doctor text-teal-600 w-4 text-center"></i>
-                    <span>Personal Médico</span>
-                </button>
-                <button onclick="toggleSidebar(false); openMedicamentosModal()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-rose-600 hover:bg-rose-50 transition-colors">
-                    <i class="fa-solid fa-pills text-rose-500 w-4 text-center"></i>
-                    <span>Pauta Medicamentos</span>
-                </button>
-                <button onclick="toggleSidebar(false); openNotificacionModal()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-emerald-800 hover:bg-emerald-50 transition-colors">
-                    <i class="fa-brands fa-whatsapp text-emerald-600 w-4 text-center"></i>
-                    <span>Actualización WhatsApp</span>
-                </button>
-                <button onclick="toggleSidebar(false); openNotificacionEmailModal()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-sky-800 hover:bg-sky-50 transition-colors">
-                    <i class="fa-solid fa-envelope text-sky-600 w-4 text-center"></i>
-                    <span>Enviar Correo Diario</span>
-                </button>
-                <button onclick="toggleSidebar(false); abrirModalGenerarImagen()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-800 hover:bg-amber-50 transition-colors">
-                    <i class="fa-solid fa-file-image text-amber-600 w-4 text-center"></i>
+        <!-- TABLA DEL CUADRANTE SEMANAL (AM, PM1, PM2, NOCTURNO) -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-left text-sm" id="tablaCuadrante">
+                    <thead>
+                        <tr class="bg-slate-100/80 border-b border-slate-200 text-slate-700">
+                            <th class="p-4 font-semibold text-xs tracking-wider uppercase text-slate-500 w-44 min-w-[170px]">
+                                Bloque Horario
+                            </th>
+                            <th id="th-dia-0" class="p-4 font-semibold text-center min-w-[140px]">Lunes</th>
+                            <th id="th-dia-1" class="p-4 font-semibold text-center min-w-[140px]">Martes</th>
+                            <th id="th-dia-2" class="p-4 font-semibold text-center min-w-[140px]">Miércoles</th>
+                            <th id="th-dia-3" class="p-4 font-semibold text-center min-w-[140px]">Jueves</th>
+                            <th id="th-dia-4" class="p-4 font-semibold text-center min-w-[140px]">Viernes</th>
+                            <th id="th-dia-5" class="p-4 font-semibold text-center min-w-[140px]">Sábado</th>
+                            <th id="th-dia-6" class="p-4 font-semibold text-center min-w-[140px]">Domingo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuadranteBody" class="divide-y divide-slate-100">
+                        <tr>
+                            <td colspan="8" class="p-12 text-center text-slate-400">
+                                <i class="fa-solid fa-circle-notch fa-spin text-2xl text-brand-600 mb-2"></i>
+                                <p>Cargando cuadrante semanal...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- Botón WhatsApp Semanal: abajo a la derecha del horario -->
+            <div id="barraWhatsappSemanal" class="hidden border-t border-slate-100 bg-slate-50/90 px-4 py-3 flex flex-col sm:flex-row items-center justify-between sm:justify-end gap-3">
+                <span class="text-xs text-slate-500 flex items-center gap-1.5">
+                    <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i>
+                    <span>Horario semanal terminado: descarga la imagen o envía notificaciones</span>
+                </span>
+                <button onclick="abrirModalGenerarImagen()" id="btnGenerarImagenSemanal"
+                    class="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    title="Generar y descargar imagen artística del horario semanal terminado">
+                    <i class="fa-solid fa-file-image text-sm"></i>
                     <span>Generar Imagen Semanal</span>
                 </button>
-                <button onclick="toggleSidebar(false); openCambiarPasswordModal(false)" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-900 hover:bg-amber-50 transition-colors">
-                    <i class="fa-solid fa-key text-amber-600 w-4 text-center"></i>
-                    <span>Cambiar Contraseña</span>
+                <button onclick="ejecutarEnvioWhatsAppSemanal()" id="btnWhatsAppSemanal"
+                    class="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                    <i class="fa-brands fa-whatsapp text-sm"></i>
+                    <span>Enviar a toda la semana</span>
                 </button>
-                <button onclick="toggleSidebar(false); logoutAdmin()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors">
-                    <i class="fa-solid fa-arrow-right-from-bracket text-rose-500 w-4 text-center"></i>
-                    <span>Cerrar Sesión</span>
+                <button onclick="ejecutarEnvioCorreoSemanal()" id="btnCorreoSemanal"
+                    class="px-4 py-2 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    title="Enviar planificación semanal por correo electrónico">
+                    <i class="fa-solid fa-envelope text-sm"></i>
+                    <span>Enviar Correo Semanal</span>
                 </button>
             </div>
-
-            <!-- Pie de Sidebar -->
-            <div class="pt-4 border-t border-slate-100 text-[11px] text-slate-400">
-                <p class="font-medium text-slate-500">MedTurnos Pro v2.1</p>
-                <p>Interfaz Responsiva Mobile-First</p>
-            </div>
-        </aside>
-
-        <!-- CONTENEDOR PRINCIPAL DE CONTENIDO -->
-        <div class="flex-1 min-w-0 flex flex-col">
-            <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
-
-                <!-- BARRA DE CONTROL DE FECHA SEMANAL -->
-                <div class="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-                    <div class="flex flex-wrap items-center justify-between sm:justify-start gap-2.5">
-                        <div class="flex items-center space-x-1.5 sm:space-x-2">
-                            <button onclick="navegarSemana(-7)" title="Semana Anterior" class="p-2 sm:p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
-                                <i class="fa-solid fa-chevron-left text-xs sm:text-sm"></i>
-                            </button>
-                            <button onclick="irSemanaActual()" class="px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors">
-                                Esta Semana
-                            </button>
-                            <button onclick="navegarSemana(7)" title="Semana Siguiente" class="p-2 sm:p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors">
-                                <i class="fa-solid fa-chevron-right text-xs sm:text-sm"></i>
-                            </button>
-                        </div>
-
-                        <div class="pl-1 sm:pl-2">
-                            <span class="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-bold block">Cuadrante de Cuidadores</span>
-                            <span id="rangoSemanaTexto" class="text-sm sm:text-base md:text-lg font-bold text-slate-900">Cargando fechas...</span>
-                        </div>
-                    </div>
-
-                    <!-- Filtro de fecha y botón admin de asignación -->
-                    <div class="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full md:w-auto">
-                        <input type="date" id="datePicker" onchange="seleccionarFecha(this.value)" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:outline-none bg-slate-50 w-full sm:w-auto">
-                        
-                        <button type="button" onclick="abrirModalGenerarImagen()" id="btnTopGenerarImagen" class="px-3.5 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 flex-1 sm:flex-initial" title="Generar y descargar imagen artística del horario semanal">
-                            <i class="fa-solid fa-file-image"></i>
-                            <span class="inline">Generar Imagen</span>
-                        </button>
-
-                        <button id="btnGestionUsuarios" onclick="openUsuariosModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all items-center justify-center gap-1.5 flex-1 sm:flex-initial" title="Gestionar Usuarios y Roles">
-                            <i class="fa-solid fa-users-gear"></i>
-                            <span>Usuarios</span>
-                        </button>
-
-                        <button id="btnNuevaAsignacion" onclick="openAsignacionModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition-all items-center justify-center gap-1.5 flex-1 sm:flex-initial">
-                            <i class="fa-solid fa-plus"></i>
-                            <span>Asignar Turno Cuidador</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- TABLA DEL CUADRANTE SEMANAL (AM, PM1, PM2, NOCTURNO) -->
-                <div id="seccionCuadrante" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="overflow-x-auto w-full shadow-md rounded-lg">
-                        <table class="w-full border-collapse text-left text-sm min-w-[760px]" id="tablaCuadrante">
-                            <thead>
-                                <tr class="bg-slate-100/80 border-b border-slate-200 text-slate-700">
-                                    <th class="p-4 font-semibold text-xs tracking-wider uppercase text-slate-500 w-44 min-w-[170px]">
-                                        Bloque Horario
-                                    </th>
-                                    <th id="th-dia-0" class="p-4 font-semibold text-center min-w-[140px]">Lunes</th>
-                                    <th id="th-dia-1" class="p-4 font-semibold text-center min-w-[140px]">Martes</th>
-                                    <th id="th-dia-2" class="p-4 font-semibold text-center min-w-[140px]">Miércoles</th>
-                                    <th id="th-dia-3" class="p-4 font-semibold text-center min-w-[140px]">Jueves</th>
-                                    <th id="th-dia-4" class="p-4 font-semibold text-center min-w-[140px]">Viernes</th>
-                                    <th id="th-dia-5" class="p-4 font-semibold text-center min-w-[140px]">Sábado</th>
-                                    <th id="th-dia-6" class="p-4 font-semibold text-center min-w-[140px]">Domingo</th>
-                                </tr>
-                            </thead>
-                            <tbody id="cuadranteBody" class="divide-y divide-slate-100">
-                                <tr>
-                                    <td colspan="8" class="p-12 text-center text-slate-400">
-                                        <i class="fa-solid fa-circle-notch fa-spin text-2xl text-brand-600 mb-2"></i>
-                                        <p>Cargando cuadrante semanal...</p>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <!-- Botón WhatsApp y Correo Semanal: abajo a la derecha del horario -->
-                    <div id="barraWhatsappSemanal" class="hidden border-t border-slate-100 bg-slate-50/90 px-4 py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-                        <span class="text-xs text-slate-500 flex items-center gap-1.5">
-                            <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i>
-                            <span>Horario semanal terminado: descarga la imagen o envía notificaciones</span>
-                        </span>
-                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                            <button onclick="abrirModalGenerarImagen()" id="btnGenerarImagenSemanal"
-                                class="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
-                                title="Generar y descargar imagen artística del horario semanal terminado">
-                                <i class="fa-solid fa-file-image text-sm"></i>
-                                <span>Generar Imagen Semanal</span>
-                            </button>
-                            <button onclick="ejecutarEnvioWhatsAppSemanal()" id="btnWhatsAppSemanal"
-                                class="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
-                                <i class="fa-brands fa-whatsapp text-sm"></i>
-                                <span>Enviar a toda la semana</span>
-                            </button>
-                            <button onclick="ejecutarEnvioCorreoSemanal()" id="btnCorreoSemanal"
-                                class="px-4 py-2 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
-                                title="Enviar planificación semanal por correo electrónico">
-                                <i class="fa-solid fa-envelope text-sm"></i>
-                                <span>Enviar Correo Semanal</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- SECCIÓN INFERIOR: ACTIVIDADES MÉDICAS Y VISITAS DEL DÍA -->
-                <div id="seccionActividades" class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200 space-y-4">
-                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between pb-3 border-b border-slate-100 gap-4">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 text-teal-600 flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-stethoscope"></i>
-                            </div>
-                            <div>
-                                <h2 class="text-sm sm:text-base font-bold text-slate-900">Actividades y Visitas Médicas de la Semana</h2>
-                                <p class="text-[11px] sm:text-xs text-slate-500">Curaciones, visitas domiciliarias y procedimientos (asignados o no a personal médico)</p>
-                            </div>
-                        </div>
-
-                        <button id="btnNuevaActividad" onclick="openActividadModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm transition-all items-center justify-center gap-1.5 w-full sm:w-auto">
-                            <i class="fa-solid fa-plus"></i>
-                            <span>Nueva Actividad Médica</span>
-                        </button>
-                    </div>
-
-                    <div class="overflow-x-auto w-full shadow-md rounded-lg p-1">
-                        <div id="contenedorActividades" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-[280px]">
-                            <div class="col-span-full text-center py-8 text-slate-400">
-                                <p class="text-sm">Cargando actividades...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- SECCIÓN: GESTIÓN Y PAUTA DE MEDICAMENTOS -->
-                <div id="seccionMedicamentos" class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200 space-y-4">
-                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between pb-3 border-b border-slate-100 gap-4">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-pills"></i>
-                            </div>
-                            <div>
-                                <h2 class="text-sm sm:text-base font-bold text-slate-900">Pauta y Gestión de Medicamentos</h2>
-                                <p class="text-[11px] sm:text-xs text-slate-500">Tratamientos farmacológicos, días y horarios de administración activos</p>
-                            </div>
-                        </div>
-
-                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
-                            <select id="filtroMedicoMedicamentos" onchange="filtrarMedicamentosDashboard()" class="px-3 py-2 text-xs font-medium border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-rose-500">
-                                <option value="">Todos los médicos</option>
-                            </select>
-
-                            <button id="btnNuevoTratamiento" onclick="openMedicamentosModal()" class="hidden px-3.5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition-all items-center justify-center gap-1.5">
-                                <i class="fa-solid fa-plus"></i>
-                                <span>Nuevo Tratamiento</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="overflow-x-auto w-full shadow-md rounded-lg p-1">
-                        <div id="contenedorMedicamentos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-[280px]">
-                            <div class="col-span-full text-center py-8 text-slate-400">
-                                <p class="text-sm">Cargando tratamientos de medicamentos...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-            </main>
-
-            <!-- FOOTER -->
-            <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
-                <p>&copy; 2026 MedTurnos Pro &bull; Gestión de Cuidadores y Personal Médico &bull; desarrollado por kyf solutions</p>
-            </footer>
         </div>
-    </div>
+
+        <!-- SECCIÓN INFERIOR: ACTIVIDADES MÉDICAS Y VISITAS DEL DÍA -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 text-teal-600 flex items-center justify-center">
+                        <i class="fa-solid fa-stethoscope"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">Actividades y Visitas Médicas de la Semana</h2>
+                        <p class="text-xs text-slate-500">Curaciones, visitas domiciliarias y procedimientos (asignados o no a personal médico)</p>
+                    </div>
+                </div>
+
+                <button id="btnNuevaActividad" onclick="openActividadModal()" class="hidden px-3.5 py-1.5 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Nueva Actividad Médica</span>
+                </button>
+            </div>
+
+            <div id="contenedorActividades" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="col-span-full text-center py-8 text-slate-400">
+                    <p class="text-sm">Cargando actividades...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN: GESTIÓN Y PAUTA DE MEDICAMENTOS -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
+                        <i class="fa-solid fa-pills"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">Pauta y Gestión de Medicamentos</h2>
+                        <p class="text-xs text-slate-500">Tratamientos farmacológicos, días y horarios de administración activos</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 flex-wrap">
+                    <select id="filtroMedicoMedicamentos" onchange="filtrarMedicamentosDashboard()" class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-rose-500">
+                        <option value="">Todos los médicos</option>
+                    </select>
+
+                    <button id="btnNuevoTratamiento" onclick="openMedicamentosModal()" class="hidden px-3.5 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition-all items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Nuevo Tratamiento</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="contenedorMedicamentos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="col-span-full text-center py-8 text-slate-400">
+                    <p class="text-sm">Cargando tratamientos de medicamentos...</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
+        <p>&copy; 2026 MedTurnos Pro &bull; Gestión de Cuidadores y Personal Médico &bull; desarrollado por kyf solutions</p>
+    </footer>
 
     <!-- ==================== MODALES ==================== -->
 

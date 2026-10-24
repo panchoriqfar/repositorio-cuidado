@@ -95,6 +95,7 @@ class AsignacionTurno(Base):
 
     estado_notificacion = Column(String(20), default="PENDIENTE", nullable=False) # 'PENDIENTE', 'ENVIADO', 'ERROR'
     fecha_envio_whatsapp = Column(DateTime, nullable=True)
+    reunion_familiar = Column(Boolean, default=False, nullable=False)
 
     # Relaciones
     cuidador = relationship("Cuidador", back_populates="asignaciones")

@@ -102,13 +102,17 @@ def format_turnos_diarios_texto(
         bloque = asig.bloque.nombre_bloque if asig.bloque else "Turno asignado"
         h_ini = asig.hora_inicio.strftime("%H:%M")
         h_fin = asig.hora_fin.strftime("%H:%M")
+        es_rf = bool(getattr(asig, "reunion_familiar", False))
 
         if estilo == "whatsapp":
-            frases.append(f"*{bloque}* (*{h_ini} - {h_fin} hrs*)")
+            extra_rf = " *[REUNION FAMILIAR]*" if es_rf else ""
+            frases.append(f"*{bloque}* (*{h_ini} - {h_fin} hrs*){extra_rf}")
         elif estilo == "html":
-            frases.append(f"<strong>{bloque}</strong> (<strong>{h_ini} - {h_fin} hrs</strong>)")
+            extra_rf = " <span style='color:#b45309;font-weight:bold;'>[REUNION FAMILIAR]</span>" if es_rf else ""
+            frases.append(f"<strong>{bloque}</strong> (<strong>{h_ini} - {h_fin} hrs</strong>){extra_rf}")
         else:
-            frases.append(f"{bloque} ({h_ini} - {h_fin} hrs)")
+            extra_rf = " [REUNION FAMILIAR]" if es_rf else ""
+            frases.append(f"{bloque} ({h_ini} - {h_fin} hrs){extra_rf}")
 
     if len(frases) == 1:
         return f"el bloque {frases[0]}"

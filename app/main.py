@@ -23,7 +23,7 @@ load_dotenv()
 Base.metadata.create_all(bind=engine)
 
 def migrar_esquema_bd(target_engine):
-    """Garantiza la existencia de columnas nuevas como must_change_password y cuidadores.mail."""
+    """Garantiza la existencia de columnas nuevas como must_change_password, cuidadores.mail y asignaciones_turnos.reunion_familiar."""
     from sqlalchemy import inspect, text
     try:
         inspector = inspect(target_engine)
@@ -38,6 +38,11 @@ def migrar_esquema_bd(target_engine):
             if "mail" not in cuid_cols:
                 with target_engine.begin() as conn:
                     conn.execute(text("ALTER TABLE cuidadores ADD COLUMN mail VARCHAR(150)"))
+        if "asignaciones_turnos" in tablas:
+            asig_cols = [c["name"] for c in inspector.get_columns("asignaciones_turnos")]
+            if "reunion_familiar" not in asig_cols:
+                with target_engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE asignaciones_turnos ADD COLUMN reunion_familiar BOOLEAN DEFAULT 0 NOT NULL"))
     except Exception as exc:
         print(f"Aviso migración de esquema: {exc}")
 
@@ -602,7 +607,8 @@ def obtener_cuadrante_semanal(
             "hora_fin": hora_fin_str,
             "horario_texto": f"{hora_ini_str} - {hora_fin_str}",
             "estado_notificacion": asig.estado_notificacion,
-            "fecha_envio_whatsapp": asig.fecha_envio_whatsapp.isoformat() if asig.fecha_envio_whatsapp else None
+            "fecha_envio_whatsapp": asig.fecha_envio_whatsapp.isoformat() if asig.fecha_envio_whatsapp else None,
+            "reunion_familiar": bool(getattr(asig, "reunion_familiar", False))
         })
 
     return {
@@ -674,6 +680,7 @@ def crear_o_actualizar_asignacion(
             existente.hora_inicio = datos.hora_inicio
             existente.hora_fin = datos.hora_fin
             existente.id_bloque = bloque.id_bloque
+            existente.reunion_familiar = bool(datos.reunion_familiar)
             existente.estado_notificacion = "PENDIENTE"
             existente.fecha_envio_whatsapp = None
             asignaciones_guardadas.append(existente)
@@ -684,6 +691,7 @@ def crear_o_actualizar_asignacion(
                 hora_inicio=datos.hora_inicio,
                 hora_fin=datos.hora_fin,
                 id_bloque=bloque.id_bloque,
+                reunion_familiar=bool(datos.reunion_familiar),
                 estado_notificacion="PENDIENTE"
             )
             db.add(nueva)

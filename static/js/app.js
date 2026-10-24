@@ -422,6 +422,7 @@ async function cargarCuadrante() {
                 if (asigs && asigs.length > 0) {
                     // Obtener horarios únicos asignados en este bloque
                     const horariosUnicos = [...new Set(asigs.map(a => a.horario_texto))].join(" / ");
+                    const tieneReunionFamiliar = asigs.some(a => a.reunion_familiar);
 
                     td.innerHTML = `
                         <div class="p-2.5 rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all space-y-2">
@@ -438,6 +439,14 @@ async function cargarCuadrante() {
                                     </span>
                                 ` : ''}
                             </div>
+
+                            <!-- EVENTO ESPECIAL: REUNION FAMILIAR -->
+                            ${tieneReunionFamiliar ? `
+                                <div class="px-2 py-1 rounded-lg bg-amber-500 text-white font-extrabold text-[10px] tracking-wider uppercase text-center flex items-center justify-center gap-1.5 shadow-xs">
+                                    <i class="fa-solid fa-users text-[10px]"></i>
+                                    <span>REUNION FAMILIAR</span>
+                                </div>
+                            ` : ''}
 
                             <!-- LISTA DE CUIDADORES DENTRO DEL MISMO CUADRO -->
                             <div class="space-y-2 divide-y divide-slate-100">
@@ -587,6 +596,8 @@ function openAsignacionModal() {
     document.getElementById("asigFecha").value = formatDateIso(fechaActual);
     document.getElementById("asigHoraInicio").value = "10:00";
     document.getElementById("asigHoraFin").value = "14:30";
+    const chkReunion = document.getElementById("asigReunionFamiliar");
+    if (chkReunion) chkReunion.checked = false;
     autoSugerirBloque();
     limpiarCuidadoresAdicionales();
     document.getElementById("asignacionModal").classList.remove("hidden");
@@ -594,6 +605,8 @@ function openAsignacionModal() {
 
 function closeAsignacionModal() {
     limpiarCuidadoresAdicionales();
+    const chkReunion = document.getElementById("asigReunionFamiliar");
+    if (chkReunion) chkReunion.checked = false;
     document.getElementById("asignacionModal").classList.add("hidden");
 }
 
@@ -619,6 +632,15 @@ function prepararAsignacionDirecta(fechaIso, idBloque) {
         }
     }
 
+    // Pre-cargar si el turno ya cuenta con reunión familiar
+    let yaTieneReunion = false;
+    if (cuadranteData && cuadranteData.matriz && cuadranteData.matriz[idBloque] && cuadranteData.matriz[idBloque][fechaIso]) {
+        const as = cuadranteData.matriz[idBloque][fechaIso];
+        if (Array.isArray(as) && as.some(a => a.reunion_familiar)) yaTieneReunion = true;
+    }
+    const chkReunion = document.getElementById("asigReunionFamiliar");
+    if (chkReunion) chkReunion.checked = yaTieneReunion;
+
     limpiarCuidadoresAdicionales();
     document.getElementById("asignacionModal").classList.remove("hidden");
 }
@@ -631,6 +653,8 @@ async function handleGuardarAsignacion(e) {
     const hora_inicio = document.getElementById("asigHoraInicio").value;
     const hora_fin = document.getElementById("asigHoraFin").value;
     const id_bloque = parseInt(document.getElementById("asigBloque").value);
+    const chkReunion = document.getElementById("asigReunionFamiliar");
+    const reunion_familiar = chkReunion ? chkReunion.checked : false;
 
     // Recolectar cuidador principal y cuidadores adicionales (opcionales)
     const cuidadoresIds = [];
@@ -656,7 +680,8 @@ async function handleGuardarAsignacion(e) {
         cuidadores_ids: cuidadoresIds,
         hora_inicio: hora_inicio.length === 5 ? `${hora_inicio}:00` : hora_inicio,
         hora_fin: hora_fin.length === 5 ? `${hora_fin}:00` : hora_fin,
-        id_bloque
+        id_bloque,
+        reunion_familiar
     };
 
     try {
@@ -2038,13 +2063,16 @@ function dibujarPosterSemanal(data, notasTexto) {
 
         // Turnos PM
         let pmShifts = [];
+        let hasReunionPM = false;
         bloquesPM.forEach(b => {
             if (fIso && matriz[b.id_bloque] && matriz[b.id_bloque][fIso]) {
                 const as = matriz[b.id_bloque][fIso];
                 if (as.length > 0) {
                     const timeTxt = as[0].horario_texto ? as[0].horario_texto.replace(" - ", "/ ") : "PM";
                     const namesTxt = as.map(a => a.cuidador_nombre).join(" + ");
-                    pmShifts.push({ time: timeTxt, names: namesTxt });
+                    const tieneReunion = as.some(a => a.reunion_familiar);
+                    if (tieneReunion) hasReunionPM = true;
+                    pmShifts.push({ time: timeTxt, names: namesTxt, reunion_familiar: tieneReunion });
                 }
             }
         });
@@ -2058,6 +2086,7 @@ function dibujarPosterSemanal(data, notasTexto) {
         // --- TARJETA 1: AM (Y: 295, Alto: 152) ---
         const amY = 295;
         const amH = 152;
+        const hasReunionAM = asigsAM.some(a => a.reunion_familiar);
         dibujarCajaTarjeta(ctx, colX, amY, colWidth, amH);
         dibujarPastillaTurno(ctx, colCx, amY + 22, "AM", paleta.bg, paleta.fg);
         dibujarIconoSol(ctx, colX + 34, amY + 86, "#D09B59");
@@ -2071,15 +2100,24 @@ function dibujarPosterSemanal(data, notasTexto) {
             const hText = asigsAM[0].horario_texto || "10:00 - 14:30";
             ctx.fillStyle = "#0F172A";
             ctx.font = "700 13px 'Inter', sans-serif";
-            ctx.fillText(hText, amCenterContentX, amY + 70);
+            const hY = hasReunionAM ? (amY + 60) : (amY + 70);
+            ctx.fillText(hText, amCenterContentX, hY);
 
             const nText = asigsAM.map(a => a.cuidador_nombre).join(" + ");
-            ctx.font = "700 16px 'Inter', sans-serif";
-            dibujarTextoConSalto(ctx, nText, amCenterContentX, amY + 95, colWidth - 75, 18);
+            ctx.font = "700 15px 'Inter', sans-serif";
+            const nYPos = hasReunionAM ? (amY + 84) : (amY + 95);
+            dibujarTextoConSalto(ctx, nText, amCenterContentX, nYPos, colWidth - 75, 17);
+
+            if (hasReunionAM) {
+                dibujarBadgeReunionFamiliar(ctx, colCx, amY + 126);
+            }
         } else {
             ctx.fillStyle = "#94A3B8";
             ctx.font = "600 18px 'Inter', sans-serif";
             ctx.fillText("—", amCenterContentX, amY + 86);
+            if (hasReunionAM) {
+                dibujarBadgeReunionFamiliar(ctx, colCx, amY + 126);
+            }
         }
         ctx.restore();
 
@@ -2096,34 +2134,49 @@ function dibujarPosterSemanal(data, notasTexto) {
         const pmCenterContentX = colX + 116;
 
         if (pmShifts.length === 1) {
+            const s = pmShifts[0];
             ctx.fillStyle = "#0F172A";
             ctx.font = "700 13px 'Inter', sans-serif";
-            ctx.fillText(pmShifts[0].time, pmCenterContentX, pmY + 70);
+            const hY = s.reunion_familiar ? (pmY + 60) : (pmY + 70);
+            ctx.fillText(s.time, pmCenterContentX, hY);
 
-            ctx.font = "700 16px 'Inter', sans-serif";
-            dibujarTextoConSalto(ctx, pmShifts[0].names, pmCenterContentX, pmY + 96, colWidth - 75, 18);
+            ctx.font = "700 15px 'Inter', sans-serif";
+            const nYPos = s.reunion_familiar ? (pmY + 84) : (pmY + 96);
+            dibujarTextoConSalto(ctx, s.names, pmCenterContentX, nYPos, colWidth - 75, 17);
+
+            if (s.reunion_familiar) {
+                dibujarBadgeReunionFamiliar(ctx, colCx, pmY + 128);
+            }
         } else if (pmShifts.length >= 2) {
             // Múltiples turnos de tarde (PM1 y PM2)
             ctx.fillStyle = "#0F172A";
-            ctx.font = "700 12px 'Inter', sans-serif";
-            ctx.fillText(pmShifts[0].time, pmCenterContentX, pmY + 56);
-            ctx.font = "700 14px 'Inter', sans-serif";
-            ctx.fillText(pmShifts[0].names, pmCenterContentX, pmY + 74);
+            ctx.font = "700 11.5px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[0].time, pmCenterContentX, pmY + 48);
+            ctx.font = "700 13.5px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[0].names, pmCenterContentX, pmY + 65);
 
-            ctx.font = "700 12px 'Inter', sans-serif";
-            ctx.fillText(pmShifts[1].time, pmCenterContentX, pmY + 102);
-            ctx.font = "700 14px 'Inter', sans-serif";
-            ctx.fillText(pmShifts[1].names, pmCenterContentX, pmY + 120);
+            ctx.font = "700 11.5px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[1].time, pmCenterContentX, pmY + 88);
+            ctx.font = "700 13.5px 'Inter', sans-serif";
+            ctx.fillText(pmShifts[1].names, pmCenterContentX, pmY + 105);
+
+            if (hasReunionPM) {
+                dibujarBadgeReunionFamiliar(ctx, colCx, pmY + 134);
+            }
         } else {
             ctx.fillStyle = "#94A3B8";
             ctx.font = "600 18px 'Inter', sans-serif";
             ctx.fillText("—", pmCenterContentX, pmY + 90);
+            if (hasReunionPM) {
+                dibujarBadgeReunionFamiliar(ctx, colCx, pmY + 128);
+            }
         }
         ctx.restore();
 
         // --- TARJETA 3: N / Nocturno (Y: 632, Alto: 122) ---
         const nY = 632;
         const nH = 122;
+        const hasReunionN = asigsN.some(a => a.reunion_familiar);
         dibujarCajaTarjeta(ctx, colX, nY, colWidth, nH);
         dibujarPastillaTurno(ctx, colCx, nY + 22, "N", "#1E293B", "#FFFFFF");
         dibujarIconoLuna(ctx, colX + 34, nY + 70, "#1E293B");
@@ -2136,13 +2189,27 @@ function dibujarPosterSemanal(data, notasTexto) {
         if (asigsN.length > 0) {
             const hText = asigsN[0].horario_texto ? asigsN[0].horario_texto.replace(" - ", "/") : "21:00/10:00";
             ctx.fillStyle = "#0F172A";
-            ctx.font = "700 13px 'Inter', sans-serif";
-            ctx.fillText(hText, nCenterContentX, nY + 56);
+            ctx.font = "700 12.5px 'Inter', sans-serif";
+            const hY = hasReunionN ? (nY + 44) : (nY + 56);
+            ctx.fillText(hText, nCenterContentX, hY);
 
             const nText = asigsN.map(a => a.cuidador_nombre).join(" + ");
-            ctx.font = "700 16px 'Inter', sans-serif";
-            dibujarTextoConSalto(ctx, nText, nCenterContentX, nY + 84, colWidth - 75, 18);
+            ctx.font = "700 15px 'Inter', sans-serif";
+            const nYPos = hasReunionN ? (nY + 66) : (nY + 84);
+            dibujarTextoConSalto(ctx, nText, nCenterContentX, nYPos, colWidth - 75, 17);
+
+            if (hasReunionN) {
+                dibujarBadgeReunionFamiliar(ctx, colCx, nY + 102);
+            }
         } else {
+            ctx.fillStyle = "#94A3B8";
+            ctx.font = "600 18px 'Inter', sans-serif";
+            ctx.fillText("—", nCenterContentX, nY + 70);
+            if (hasReunionN) {
+                dibujarBadgeReunionFamiliar(ctx, colCx, nY + 102);
+            }
+        }
+        ctx.restore();
             ctx.fillStyle = "#94A3B8";
             ctx.font = "600 18px 'Inter', sans-serif";
             ctx.fillText("—", nCenterContentX, nY + 70);
@@ -2257,6 +2324,33 @@ function dibujarPastillaTurno(ctx, cx, cy, texto, bg, fg) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(texto, cx, cy);
+    ctx.restore();
+}
+
+/**
+ * Dibuja la píldora / etiqueta de REUNION FAMILIAR en mayúsculas en la tarjeta
+ */
+function dibujarBadgeReunionFamiliar(ctx, cx, cy) {
+    ctx.save();
+    const w = 152;
+    const h = 20;
+    ctx.fillStyle = "#F59E0B"; // Amber 500
+    ctx.strokeStyle = "#D97706"; // Amber 600
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 6);
+    } else {
+        ctx.rect(cx - w / 2, cy - h / 2, w, h);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "800 10.5px 'Inter', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("REUNION FAMILIAR", cx, cy + 0.5);
     ctx.restore();
 }
 

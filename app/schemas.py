@@ -126,6 +126,7 @@ class AsignacionTurnoCreate(BaseModel):
     hora_inicio: time
     hora_fin: time
     id_bloque: Optional[int] = None
+    reunion_familiar: Optional[bool] = False
 
 class AsignacionTurnoResponse(BaseModel):
     id_asignacion: int
@@ -136,6 +137,7 @@ class AsignacionTurnoResponse(BaseModel):
     id_bloque: int
     estado_notificacion: str
     fecha_envio_whatsapp: Optional[datetime] = None
+    reunion_familiar: Optional[bool] = False
     cuidador: Optional[CuidadorResponse] = None
     bloque: Optional[BloqueTurnoResponse] = None
 

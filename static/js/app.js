@@ -817,19 +817,24 @@ function renderizarListaCuidadoresModal() {
                     ${c.mail ? `<span class="flex items-center gap-1 text-slate-600 font-sans"><i class="fa-solid fa-envelope text-sky-600"></i> ${c.mail}</span>` : `<span class="text-[10px] text-slate-400 italic">Sin correo</span>`}
                 </div>
             </div>
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center space-x-1.5">
                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${c.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
                     ${c.activo ? 'Activo' : 'Inactivo'}
                 </span>
-                ${c.activo ? (esSuper ? `
-                    <button onclick="desactivarCuidador(${c.id_cuidador})" title="Desactivar cuidador (super_user)" class="text-xs text-rose-500 hover:text-rose-700 p-1 transition-colors">
-                        <i class="fa-solid fa-user-xmark"></i>
+                ${c.activo ? `
+                    <button onclick="openEditarCuidadorModal(${c.id_cuidador})" title="Editar datos del cuidador/a" class="text-xs text-sky-600 hover:text-sky-800 p-1.5 rounded-lg hover:bg-sky-50 transition-colors">
+                        <i class="fa-solid fa-pen-to-square"></i>
                     </button>
-                ` : `
-                    <span title="Restricción: Solo super_user tiene permitido eliminar cuidadores" class="text-xs text-slate-300 p-1 cursor-not-allowed">
-                        <i class="fa-solid fa-lock text-slate-400"></i>
-                    </span>
-                `) : ''}
+                    ${esSuper ? `
+                        <button onclick="desactivarCuidador(${c.id_cuidador})" title="Desactivar cuidador (super_user)" class="text-xs text-rose-500 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition-colors">
+                            <i class="fa-solid fa-user-xmark"></i>
+                        </button>
+                    ` : `
+                        <span title="Restricción: Solo super_user tiene permitido eliminar cuidadores" class="text-xs text-slate-300 p-1.5 cursor-not-allowed">
+                            <i class="fa-solid fa-lock text-slate-400"></i>
+                        </span>
+                    `}
+                ` : ''}
             </div>
         </div>
     `).join("");
@@ -909,6 +914,88 @@ async function desactivarCuidador(idCuidador) {
         }
     } catch (e) {
         alert("Error de conexión");
+    }
+}
+
+function openEditarCuidadorModal(idCuidador) {
+    const cuid = listaCuidadoresCache.find(c => c.id_cuidador === idCuidador);
+    if (!cuid) {
+        alert("Cuidador/a no encontrado/a");
+        return;
+    }
+
+    document.getElementById("cuidEditId").value = cuid.id_cuidador;
+    document.getElementById("cuidEditNombre").value = cuid.nombre || "";
+    document.getElementById("cuidEditApellido").value = cuid.apellido || "";
+
+    // Extraer los 8 dígitos tras +569 si existe
+    let tel = (cuid.telefono_whatsapp || "").trim();
+    if (tel.startsWith("+569")) {
+        tel = tel.substring(4);
+    } else if (tel.startsWith("569")) {
+        tel = tel.substring(3);
+    }
+    document.getElementById("cuidEditTelefonoNumeros").value = tel.replace(/\D/g, '').slice(0, 8);
+    const errTel = document.getElementById("cuidEditTelefonoError");
+    if (errTel) errTel.classList.add("hidden");
+
+    document.getElementById("cuidEditMail").value = cuid.mail || "";
+
+    document.getElementById("editarCuidadorModal").classList.remove("hidden");
+}
+
+function closeEditarCuidadorModal() {
+    const modal = document.getElementById("editarCuidadorModal");
+    if (modal) modal.classList.add("hidden");
+}
+
+async function handleActualizarCuidador(e) {
+    e.preventDefault();
+    const token = getToken();
+    const idCuidador = document.getElementById("cuidEditId").value;
+    const nombre = document.getElementById("cuidEditNombre").value.trim();
+    const apellido = (document.getElementById("cuidEditApellido")?.value || "").trim();
+    const numerosInput = document.getElementById("cuidEditTelefonoNumeros");
+    const numeros = numerosInput ? numerosInput.value.trim() : "";
+    const errorTel = document.getElementById("cuidEditTelefonoError");
+
+    if (!nombre) {
+        alert("El nombre del cuidador/a es obligatorio.");
+        return;
+    }
+
+    if (!/^\d{8}$/.test(numeros)) {
+        if (errorTel) errorTel.classList.remove("hidden");
+        numerosInput?.focus();
+        return;
+    }
+    if (errorTel) errorTel.classList.add("hidden");
+
+    const telefono_whatsapp = "+569" + numeros;
+    const mailInput = document.getElementById("cuidEditMail");
+    const mail = mailInput && mailInput.value.trim() ? mailInput.value.trim() : null;
+
+    try {
+        const res = await fetch(`/api/admin/cuidadores/${idCuidador}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ nombre, apellido, telefono_whatsapp, mail })
+        });
+        if (res.ok) {
+            closeEditarCuidadorModal();
+            await cargarDatosIniciales();
+            renderizarListaCuidadoresModal();
+            cargarCuadrante();
+            alert("¡Cuidador/a actualizado/a exitosamente!");
+        } else {
+            const err = await res.json();
+            alert(err.detail || "Error al actualizar cuidador/a");
+        }
+    } catch (e) {
+        alert("Error de conexión al actualizar cuidador/a");
     }
 }
 

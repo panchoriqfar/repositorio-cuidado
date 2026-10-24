@@ -470,6 +470,57 @@
         </div>
     </div>
 
+    <!-- MODAL EDITAR CUIDADOR -->
+    <div id="editarCuidadorModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2 text-sky-700">
+                    <i class="fa-solid fa-user-pen text-xl"></i>
+                    <h3 class="font-bold text-slate-900 text-lg">Editar Datos del Cuidador</h3>
+                </div>
+                <button type="button" onclick="closeEditarCuidadorModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+            </div>
+
+            <form id="editarCuidadorForm" onsubmit="handleActualizarCuidador(event)" class="space-y-4">
+                <input type="hidden" id="cuidEditId">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nombre <span class="text-rose-500">*</span></label>
+                        <input type="text" id="cuidEditNombre" required placeholder="Ej: Rosa" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Apellido <span class="text-slate-400 font-normal">(opcional)</span></label>
+                        <input type="text" id="cuidEditApellido" placeholder="Ej: Morales" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">WhatsApp <span class="text-rose-500">*</span></label>
+                        <div class="flex items-center gap-2">
+                            <span class="px-3 py-2 text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg whitespace-nowrap">+569</span>
+                            <input type="text" id="cuidEditTelefonoNumeros" required maxlength="8" placeholder="12345678 (8 dígitos)" pattern="\d{8}"
+                                class="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                oninput="this.value=this.value.replace(/\D/g,'').slice(0,8)">
+                        </div>
+                        <p id="cuidEditTelefonoError" class="text-[10px] text-rose-500 mt-1 hidden">Debes ingresar exactamente 8 dígitos numéricos</p>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Correo Electrónico <span class="text-slate-400 font-normal">(opcional)</span></label>
+                        <input type="email" id="cuidEditMail" placeholder="ejemplo@correo.com" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                    <button type="button" onclick="closeEditarCuidadorModal()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Guardar Cambios</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- 5. MODAL GESTIÓN DE PERSONAL MÉDICO -->
     <div id="medicosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col">

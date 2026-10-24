@@ -2210,11 +2210,6 @@ function dibujarPosterSemanal(data, notasTexto) {
             }
         }
         ctx.restore();
-            ctx.fillStyle = "#94A3B8";
-            ctx.font = "600 18px 'Inter', sans-serif";
-            ctx.fillText("—", nCenterContentX, nY + 70);
-        }
-        ctx.restore();
     }
 
     // 6. SECCIÓN INFERIOR

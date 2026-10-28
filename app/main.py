@@ -983,11 +983,24 @@ def consultar_pauta_medicamentos(
         .all()
     )
 
-    # 3. Si se especifica filtro por fecha, seleccionar únicamente los horarios del día solicitado
+    # 3. Si se especifica filtro por fecha, seleccionar los horarios del día solicitado (incluyendo tomas arrastradas)
     if fecha is not None:
         resultado_filtrado = []
         for t in tratamientos:
             horarios_dia = [h for h in t.horarios if h.dia == fecha]
+            if not horarios_dia and fecha >= t.dia_inicial:
+                horas_base = [h.hora for h in t.horarios if h.dia == t.dia_inicial]
+                if not horas_base and t.horarios:
+                    horas_base = sorted({h.hora for h in t.horarios})
+                horarios_dia = [
+                    schemas.MedicamentoHorarioResponse(
+                        id=0,
+                        medicamento_id=t.id,
+                        dia=fecha,
+                        hora=hb
+                    )
+                    for hb in horas_base
+                ]
             if horarios_dia:
                 resultado_filtrado.append(
                     schemas.TratamientoMedicamentoResponse(
@@ -1031,6 +1044,19 @@ def listar_todos_tratamientos(
         resultado = []
         for t in tratamientos:
             horarios_dia = [h for h in t.horarios if h.dia == fecha]
+            if not horarios_dia and fecha >= t.dia_inicial:
+                horas_base = [h.hora for h in t.horarios if h.dia == t.dia_inicial]
+                if not horas_base and t.horarios:
+                    horas_base = sorted({h.hora for h in t.horarios})
+                horarios_dia = [
+                    schemas.MedicamentoHorarioResponse(
+                        id=0,
+                        medicamento_id=t.id,
+                        dia=fecha,
+                        hora=hb
+                    )
+                    for hb in horas_base
+                ]
             if horarios_dia:
                 resultado.append(
                     schemas.TratamientoMedicamentoResponse(

@@ -21,7 +21,16 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 logger = logging.getLogger("database")
 logging.basicConfig(level=logging.INFO)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./turnos_medicos.db")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_SQLITE_PATH = os.path.join(BASE_DIR, "turnos_medicos.db")
+DEFAULT_SQLITE_URL = f"sqlite:///{DEFAULT_SQLITE_PATH.replace(os.sep, '/')}"
+
+raw_db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+if raw_db_url.startswith("sqlite:///./") or raw_db_url == "sqlite:///turnos_medicos.db":
+    rel = raw_db_url.replace("sqlite:///./", "").replace("sqlite:///", "")
+    DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, rel).replace(os.sep, '/')}"
+else:
+    DATABASE_URL = raw_db_url
 
 def format_database_url(url: str) -> str:
     """Normaliza la URL de conexión para PostgreSQL/Supabase/Neon/Render."""
@@ -52,7 +61,7 @@ except Exception as exc:
             f"No fue posible conectar con la base de datos principal. "
             f"Se activa respaldo local SQLite (turnos_medicos.db). Detalle: {exc}"
         )
-        DATABASE_URL = "sqlite:///./turnos_medicos.db"
+        DATABASE_URL = DEFAULT_SQLITE_URL
         engine = _build_engine(DATABASE_URL)
     else:
         raise exc

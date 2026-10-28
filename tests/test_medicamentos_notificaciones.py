@@ -1,0 +1,403 @@
+import pytest
+from datetime import date, time, datetime, timedelta
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.models import Base, Cuidador, PersonalMedico, BloqueTurno, AsignacionTurno, ActividadMedica, TratamientoMedicamento, MedicamentoHorario
+from app.medicamentos_service import (
+    TomaMedicamento,
+    obtener_medicamentos_programados,
+    esta_en_jornada_asig,
+)
+from app.email_service import (
+    construir_contenido_diario,
+    construir_contenido_semanal,
+    enviar_correos_del_dia,
+    enviar_correos_semana_completa,
+)
+from app.whatsapp import (
+    build_whatsapp_message,
+    build_whatsapp_message_semanal,
+)
+
+
+@pytest.fixture
+def db_session():
+    """Crea una sesión de base de datos SQLite en memoria aislada para pruebas."""
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    # Sembrar datos base
+    bloque_am = BloqueTurno(id_bloque=1, codigo_bloque="AM", nombre_bloque="AM", hora_inicio=time(8, 0), hora_fin=time(14, 0))
+    bloque_pm = BloqueTurno(id_bloque=2, codigo_bloque="PM1", nombre_bloque="PM1", hora_inicio=time(10, 0), hora_fin=time(14, 30))
+    bloque_n = BloqueTurno(id_bloque=3, codigo_bloque="N", nombre_bloque="N", hora_inicio=time(21, 0), hora_fin=time(10, 0))
+    session.add_all([bloque_am, bloque_pm, bloque_n])
+
+    medico = PersonalMedico(id_medico=1, nombre="Dr. Carlos", apellido="Gómez", especialidad="Geriatría", activo=True)
+    session.add(medico)
+
+    cuid_martes = Cuidador(id_cuidador=1, nombre="Claudia", apellido="Valenzuela", mail="claudia@test.com", telefono_whatsapp="+56911112222", activo=True)
+    cuid_lunes_noc = Cuidador(id_cuidador=2, nombre="Manuel", apellido="Reyes", mail="manuel@test.com", telefono_whatsapp="+56933334444", activo=True)
+    session.add_all([cuid_martes, cuid_lunes_noc])
+
+    session.commit()
+    yield session
+    session.close()
+
+
+def test_obtener_medicamentos_programados_arrastre(db_session):
+    """
+    Verifica que un medicamento creado el lunes (sin duración explícita)
+    genere automáticamente tomas arrastradas el martes y miércoles con sus horarios base.
+    """
+    lunes = date(2026, 10, 26)
+    martes = date(2026, 10, 27)
+    miercoles = date(2026, 10, 28)
+
+    # Tratamiento creado el lunes con 3 tomas solo el día inicial
+    trat = TratamientoMedicamento(
+        id=1,
+        personal_medico_id=1,
+        nombre_medicamento="Paracetamol 500mg",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    h1 = MedicamentoHorario(medicamento_id=1, dia=lunes, hora=time(8, 0))
+    h2 = MedicamentoHorario(medicamento_id=1, dia=lunes, hora=time(12, 0))
+    h3 = MedicamentoHorario(medicamento_id=1, dia=lunes, hora=time(22, 0))
+    db_session.add_all([h1, h2, h3])
+    db_session.commit()
+
+    # Consultar rango lunes a miércoles
+    tomas = obtener_medicamentos_programados(db_session, lunes, miercoles)
+
+    # Total esperado: 3 tomas x 3 días = 9 tomas
+    assert len(tomas) == 9
+
+    # Verificar tomas del lunes (explícitas)
+    tomas_lunes = [t for t in tomas if t.dia == lunes]
+    assert len(tomas_lunes) == 3
+    assert all(not t.es_arrastrado for t in tomas_lunes)
+
+    # Verificar tomas del martes (arrastradas automáticamente)
+    tomas_martes = [t for t in tomas if t.dia == martes]
+    assert len(tomas_martes) == 3
+    assert all(t.es_arrastrado for t in tomas_martes)
+    assert [t.hora for t in tomas_martes] == [time(8, 0), time(12, 0), time(22, 0)]
+    assert tomas_martes[0].tratamiento.nombre_medicamento == "Paracetamol 500mg"
+
+    # Verificar tomas del miércoles (arrastradas automáticamente)
+    tomas_miercoles = [t for t in tomas if t.dia == miercoles]
+    assert len(tomas_miercoles) == 3
+    assert all(t.es_arrastrado for t in tomas_miercoles)
+
+
+def test_esta_en_jornada_asig_diurno_y_nocturno():
+    """
+    Verifica que la función determine con precisión si una toma cae en turnos diurnos
+    y en turnos nocturnos que cruzan la medianoche.
+    """
+    lunes = date(2026, 10, 26)
+    martes = date(2026, 10, 27)
+
+    # Turno diurno martes: 10:00 - 14:30
+    asig_diurna = AsignacionTurno(fecha=martes, hora_inicio=time(10, 0), hora_fin=time(14, 30))
+    assert esta_en_jornada_asig(martes, time(12, 0), asig_diurna) is True
+    assert esta_en_jornada_asig(martes, time(10, 0), asig_diurna) is True
+    assert esta_en_jornada_asig(martes, time(14, 30), asig_diurna) is True
+    assert esta_en_jornada_asig(martes, time(8, 0), asig_diurna) is False
+    assert esta_en_jornada_asig(martes, time(22, 0), asig_diurna) is False
+    assert esta_en_jornada_asig(lunes, time(12, 0), asig_diurna) is False
+
+    # Turno nocturno lunes: 21:00 - 10:00 del martes
+    asig_nocturna = AsignacionTurno(fecha=lunes, hora_inicio=time(21, 0), hora_fin=time(10, 0))
+    assert esta_en_jornada_asig(lunes, time(22, 0), asig_nocturna) is True
+    assert esta_en_jornada_asig(martes, time(8, 0), asig_nocturna) is True
+    assert esta_en_jornada_asig(martes, time(10, 0), asig_nocturna) is True
+    assert esta_en_jornada_asig(lunes, time(8, 0), asig_nocturna) is False
+    assert esta_en_jornada_asig(martes, time(12, 0), asig_nocturna) is False
+
+
+def test_cuidador_martes_recibe_medicamento_arrastrado_diario(db_session):
+    """
+    Verifica que el cuidador del martes reciba en su correo y mensaje diario
+    los medicamentos creados el lunes que se arrastran al martes.
+    """
+    lunes = date(2026, 10, 26)
+    martes = date(2026, 10, 27)
+
+    trat = TratamientoMedicamento(
+        id=1,
+        personal_medico_id=1,
+        nombre_medicamento="Enalapril 10mg",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    h1 = MedicamentoHorario(medicamento_id=1, dia=lunes, hora=time(12, 0))
+    db_session.add(h1)
+
+    cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first() # Claudia
+    asig_martes = AsignacionTurno(
+        id_cuidador=cuid.id_cuidador,
+        fecha=martes,
+        hora_inicio=time(10, 0),
+        hora_fin=time(14, 30),
+        id_bloque=2
+    )
+    db_session.add(asig_martes)
+    db_session.commit()
+
+    # Obtener tomas para el martes
+    tomas_martes = obtener_medicamentos_programados(db_session, martes, martes + timedelta(days=1))
+    meds_turno = [m for m in tomas_martes if esta_en_jornada_asig(m.dia, m.hora, asig_martes)]
+
+    assert len(meds_turno) == 1
+    assert meds_turno[0].hora == time(12, 0)
+    assert meds_turno[0].tratamiento.nombre_medicamento == "Enalapril 10mg"
+
+    # Generar contenido diario de email
+    subject, text, html = construir_contenido_diario(cuid, asig_martes, [], meds_turno)
+    assert "Enalapril 10mg: 12:00 hrs" in text
+    assert "Enalapril 10mg" in html
+    assert "12:00 hrs" in html
+    assert "No tienes administración de medicamentos programada" not in text
+
+    # Generar WhatsApp diario
+    msg_wa = build_whatsapp_message(cuid, asig_martes, [], meds_turno)
+    assert "Enalapril 10mg" in msg_wa
+    assert "12:00" in msg_wa
+
+
+def test_cuidador_recibe_medicamentos_semanal_arrastrados(db_session):
+    """
+    Verifica que en el correo y WhatsApp semanal consolidado, los cuidadores con turnos
+    en martes reciban los medicamentos arrastrados y los cuidadores nocturnos reciban
+    las tomas de la mañana siguiente.
+    """
+    lunes = date(2026, 10, 26)
+    martes = date(2026, 10, 27)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=1,
+        personal_medico_id=1,
+        nombre_medicamento="Omeprazol 20mg",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    # Tomas creadas el lunes: 08:00 y 12:00
+    h1 = MedicamentoHorario(medicamento_id=1, dia=lunes, hora=time(8, 0))
+    h2 = MedicamentoHorario(medicamento_id=1, dia=lunes, hora=time(12, 0))
+    db_session.add_all([h1, h2])
+
+    cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first() # Claudia
+    bloque = db_session.query(BloqueTurno).filter_by(id_bloque=2).first()
+
+    # Asignación de Claudia el martes 10:00 - 14:30
+    asig_martes = AsignacionTurno(
+        id_cuidador=cuid.id_cuidador,
+        fecha=martes,
+        hora_inicio=time(10, 0),
+        hora_fin=time(14, 30),
+        id_bloque=2,
+        bloque=bloque
+    )
+    db_session.add(asig_martes)
+    db_session.commit()
+
+    # Obtener medicamentos de la semana completa
+    tomas_semana = obtener_medicamentos_programados(db_session, lunes, domingo + timedelta(days=1))
+    meds_por_fecha = {}
+    for t in tomas_semana:
+        meds_por_fecha.setdefault(t.dia, []).append(t)
+
+    # Generar contenido semanal de email
+    subject, text, html = construir_contenido_semanal(
+        cuidador=cuid,
+        asignaciones=[asig_martes],
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+
+    assert "Omeprazol 20mg" in text
+    assert "12:00 hrs" in text
+    assert "Omeprazol 20mg" in html
+    assert "No tienes administración de medicamentos programada en tus turnos" not in text
+
+    # Generar WhatsApp semanal
+    msg_wa = build_whatsapp_message_semanal(
+        cuidador=cuid,
+        asignaciones=[asig_martes],
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+    assert "Omeprazol 20mg" in msg_wa
+    assert "12:00" in msg_wa
+
+
+def test_cuidador_nocturno_recibe_toma_manana_siguiente(db_session):
+    """
+    Verifica que un cuidador asignado en turno de noche (Lunes 21:00 a Martes 10:00)
+    reciba correctamente la toma de medicamento de las 08:00 AM del martes (cruce de medianoche).
+    """
+    lunes = date(2026, 10, 26)
+    martes = date(2026, 10, 27)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=2,
+        personal_medico_id=1,
+        nombre_medicamento="Aspirina 100mg",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    # Tomas: 22:00 (lunes noche) y 08:00 (mañana)
+    h1 = MedicamentoHorario(medicamento_id=2, dia=lunes, hora=time(22, 0))
+    h2 = MedicamentoHorario(medicamento_id=2, dia=lunes, hora=time(8, 0))
+    db_session.add_all([h1, h2])
+
+    cuid_noc = db_session.query(Cuidador).filter_by(id_cuidador=2).first() # Manuel
+    bloque_noc = db_session.query(BloqueTurno).filter_by(id_bloque=3).first()
+
+    asig_noc = AsignacionTurno(
+        id_cuidador=cuid_noc.id_cuidador,
+        fecha=lunes,
+        hora_inicio=time(21, 0),
+        hora_fin=time(10, 0),
+        id_bloque=3,
+        bloque=bloque_noc
+    )
+    db_session.add(asig_noc)
+    db_session.commit()
+
+    # Tomas de la semana
+    tomas_semana = obtener_medicamentos_programados(db_session, lunes, domingo + timedelta(days=1))
+    meds_por_fecha = {}
+    for t in tomas_semana:
+        meds_por_fecha.setdefault(t.dia, []).append(t)
+
+    # Verificar que las tomas del martes a las 08:00 caigan dentro de la jornada nocturna
+    tomas_martes = meds_por_fecha.get(martes, [])
+    tomas_en_jornada = [m for m in tomas_martes if esta_en_jornada_asig(m.dia, m.hora, asig_noc)]
+    assert len(tomas_en_jornada) == 1
+    assert tomas_en_jornada[0].hora == time(8, 0)
+
+    # Verificar contenido semanal
+    subject, text, html = construir_contenido_semanal(
+        cuidador=cuid_noc,
+        asignaciones=[asig_noc],
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+
+    assert "Aspirina 100mg" in text
+    assert "22:00" in text
+    assert "08:00" in text
+
+    # Verificar WhatsApp semanal
+    msg_wa = build_whatsapp_message_semanal(
+        cuidador=cuid_noc,
+        asignaciones=[asig_noc],
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+    assert "Aspirina 100mg" in msg_wa
+    assert "22:00" in msg_wa
+    assert "08:00" in msg_wa
+
+
+def test_enviar_correos_del_dia_y_semanal_medicamento_arrastrado_martes(db_session):
+    """
+    Verifica que enviar_correos_del_dia y enviar_correos_semana_completa incluyan
+    exitosamente para el cuidador del día martes los medicamentos creados el lunes
+    (tanto arrastrados como con tomas a horas variadas).
+    """
+    from unittest.mock import patch
+
+    lunes = date(2026, 10, 26)
+    martes = date(2026, 10, 27)
+
+    cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first() # Claudia
+    bloque = db_session.query(BloqueTurno).filter_by(id_bloque=2).first() # AM (10:00 - 14:30)
+
+    # Asignar a Claudia el martes en bloque AM
+    asig_martes = AsignacionTurno(
+        id_cuidador=cuid.id_cuidador,
+        fecha=martes,
+        hora_inicio=time(10, 0),
+        hora_fin=time(14, 30),
+        id_bloque=2,
+        bloque=bloque
+    )
+    db_session.add(asig_martes)
+
+    # Medicamento creado el lunes a las 08:00 y 12:00
+    trat = TratamientoMedicamento(
+        id=10,
+        personal_medico_id=1,
+        nombre_medicamento="Losartan 50mg",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    h1 = MedicamentoHorario(medicamento_id=10, dia=lunes, hora=time(8, 0))
+    h2 = MedicamentoHorario(medicamento_id=10, dia=lunes, hora=time(12, 0))
+    db_session.add_all([h1, h2])
+    db_session.commit()
+
+    with patch("app.email_service.enviar_email_via_resend") as mock_resend:
+        mock_resend.return_value = {"status": "success", "id": "email_test_123"}
+
+        # 1. Probar Correo Diario del Martes
+        res_diario = enviar_correos_del_dia(martes, db_session)
+        assert res_diario["enviados"] == 1
+        assert len(mock_resend.call_args_list) == 1
+
+        call_args = mock_resend.call_args[0]
+        destinatario = call_args[0]
+        asunto = call_args[1]
+        cuerpo_texto = call_args[2]
+        cuerpo_html = call_args[3]
+
+        assert destinatario == cuid.mail
+        assert "Losartan 50mg" in cuerpo_texto
+        assert "12:00 hrs" in cuerpo_texto
+        assert "08:00" in cuerpo_texto
+        assert "Losartan 50mg" in cuerpo_html
+        assert "No tienes administración de medicamentos programada" not in cuerpo_texto
+
+        mock_resend.reset_mock()
+
+        # 2. Probar Correo Semanal
+        res_semanal = enviar_correos_semana_completa(lunes, db_session)
+        assert res_semanal["enviados"] >= 1
+        assert mock_resend.called
+
+        llamada_claudia = [c for c in mock_resend.call_args_list if c[0][0] == cuid.mail][0]
+        texto_sem = llamada_claudia[0][2]
+        html_sem = llamada_claudia[0][3]
+
+        assert "Losartan 50mg" in texto_sem
+        assert "Losartan 50mg" in html_sem
+        assert "Martes 27/10/2026" in texto_sem
+        assert "No tienes administración de medicamentos programada" not in texto_sem
+

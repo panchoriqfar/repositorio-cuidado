@@ -15,6 +15,12 @@ from dotenv import load_dotenv
 
 from app.models import AsignacionTurno, ActividadMedica, Cuidador, BloqueTurno, TratamientoMedicamento, MedicamentoHorario
 from app.schemas import NotificacionDiaResponse, DetalleEnvio
+from app.medicamentos_service import (
+    TomaMedicamento,
+    obtener_medicamentos_programados,
+    esta_en_jornada_asig,
+    corresponde_medicamento_a_cuidador,
+)
 
 # ---------------------------------------------------------------------------
 # Cargar variables de entorno
@@ -260,11 +266,25 @@ def build_whatsapp_message_semanal(
         mensaje += f"📌 *{dia_nom} {fecha_str}*:\n"
         mensaje += f"   ⏰ *Horario:* {hora_ini} - {hora_fin} hrs ({bloque_nombre})\n"
 
-        # Cruce estricto: solo medicamentos dentro de este horario de turno
+        dias_turno = [asig.fecha]
+        if asig.hora_inicio > asig.hora_fin:
+            dias_turno.append(asig.fecha + timedelta(days=1))
+
+        # Cruce estricto: solo medicamentos dentro de este horario de turno (incluye cruce de medianoche y arrastre)
         meds_turno = []
         if medicamentos_por_fecha:
-            meds_dia = medicamentos_por_fecha.get(asig.fecha, [])
-            meds_turno = [m for m in meds_dia if esta_en_jornada(m.hora, asig.hora_inicio, asig.hora_fin)]
+            meds_candidatos = []
+            for d in dias_turno:
+                meds_candidatos.extend(medicamentos_por_fecha.get(d, []))
+
+            vistos_m = set()
+            for m in meds_candidatos:
+                if corresponde_medicamento_a_cuidador(m.dia, m.hora, asig):
+                    nom = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
+                    if (m.dia, m.hora, nom) not in vistos_m:
+                        vistos_m.add((m.dia, m.hora, nom))
+                        meds_turno.append(m)
+
             if meds_turno:
                 mensaje += "   💊 *Medicamentos en tu Turno:*\n"
                 meds_agrupados_sem: Dict[str, List[str]] = {}
@@ -276,9 +296,19 @@ def build_whatsapp_message_semanal(
                 for idx, (nom, h_list) in enumerate(meds_agrupados_sem.items(), 1):
                     mensaje += f"      {idx}. {nom}: {', '.join(h_list)} hrs\n"
 
-        # Cruce estricto: solo actividades dentro de este horario de turno
-        actividades_dia = actividades_por_fecha.get(asig.fecha, [])
-        acts_turno = [act for act in actividades_dia if esta_en_jornada(act.hora, asig.hora_inicio, asig.hora_fin)]
+        # Cruce estricto: solo actividades dentro de este horario de turno (incluye cruce de medianoche)
+        acts_candidatas = []
+        for d in dias_turno:
+            acts_candidatas.extend(actividades_por_fecha.get(d, []))
+
+        acts_turno = []
+        vistos_act = set()
+        for act in acts_candidatas:
+            if esta_en_jornada_asig(act.fecha, act.hora, asig):
+                if (act.fecha, act.hora, act.titulo) not in vistos_act:
+                    vistos_act.add((act.fecha, act.hora, act.titulo))
+                    acts_turno.append(act)
+
         if acts_turno:
             mensaje += "   📋 *Actividades Médicas en tu Turno:*\n"
             acts_agrupadas_sem: Dict[str, Dict[str, Any]] = {}
@@ -329,13 +359,10 @@ def enviar_notificaciones_del_dia(
         .all()
     )
 
-    medicamentos_dia: List[MedicamentoHorario] = (
-        db.query(MedicamentoHorario)
-        .join(TratamientoMedicamento)
-        .options(joinedload(MedicamentoHorario.tratamiento).joinedload(TratamientoMedicamento.personal_medico))
-        .filter(MedicamentoHorario.dia.in_([fecha_seleccionada, dia_siguiente]))
-        .order_by(MedicamentoHorario.dia.asc(), MedicamentoHorario.hora.asc())
-        .all()
+    medicamentos_dia: List[TomaMedicamento] = obtener_medicamentos_programados(
+        db=db,
+        fecha_inicio=fecha_seleccionada,
+        fecha_fin=dia_siguiente
     )
 
     # Agrupar asignaciones por cuidador (solo activos)
@@ -368,7 +395,7 @@ def enviar_notificaciones_del_dia(
         ]
         meds_turno = [
             m for m in medicamentos_dia
-            if any(esta_en_jornada_asig(m.dia, m.hora, a) for a in lista_ordenada)
+            if any(corresponde_medicamento_a_cuidador(m.dia, m.hora, a) for a in lista_ordenada)
         ]
 
         mensaje_texto = build_whatsapp_message(cuidador, lista_ordenada, acts_turno, meds_turno)
@@ -427,6 +454,7 @@ def enviar_notificaciones_semana_completa(
     """
     inicio_semana = fecha_base - timedelta(days=fecha_base.weekday())
     fin_semana = inicio_semana + timedelta(days=6)
+    dia_extra = fin_semana + timedelta(days=1)
 
     # Buscar asignaciones de la semana para cuidadores activos
     asignaciones: List[AsignacionTurno] = (
@@ -442,12 +470,12 @@ def enviar_notificaciones_semana_completa(
         .all()
     )
 
-    # Buscar actividades médicas de la semana
+    # Buscar actividades médicas de la semana (incluye extensión nocturna de fin de semana)
     actividades: List[ActividadMedica] = (
         db.query(ActividadMedica)
         .filter(
             ActividadMedica.fecha >= inicio_semana,
-            ActividadMedica.fecha <= fin_semana
+            ActividadMedica.fecha <= dia_extra
         )
         .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
         .all()
@@ -457,20 +485,14 @@ def enviar_notificaciones_semana_completa(
     for act in actividades:
         actividades_por_fecha.setdefault(act.fecha, []).append(act)
 
-    # Buscar medicamentos de la semana
-    medicamentos: List[MedicamentoHorario] = (
-        db.query(MedicamentoHorario)
-        .join(TratamientoMedicamento)
-        .options(joinedload(MedicamentoHorario.tratamiento).joinedload(TratamientoMedicamento.personal_medico))
-        .filter(
-            MedicamentoHorario.dia >= inicio_semana,
-            MedicamentoHorario.dia <= fin_semana
-        )
-        .order_by(MedicamentoHorario.dia.asc(), MedicamentoHorario.hora.asc())
-        .all()
+    # Buscar medicamentos de la semana (incluye arrastre continuo y tomas cruzadas)
+    medicamentos: List[TomaMedicamento] = obtener_medicamentos_programados(
+        db=db,
+        fecha_inicio=inicio_semana,
+        fecha_fin=dia_extra
     )
 
-    medicamentos_por_fecha: Dict[date, List[MedicamentoHorario]] = {}
+    medicamentos_por_fecha: Dict[date, List[TomaMedicamento]] = {}
     for m in medicamentos:
         medicamentos_por_fecha.setdefault(m.dia, []).append(m)
 

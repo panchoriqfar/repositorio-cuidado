@@ -40,9 +40,18 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
   - Si un cuidador no tiene correo registrado o el formato es inválido, se registra como `OMITIDO`.
   - Captura excepciones por destinatario para evitar que el fallo de un correo interrumpa el envío masivo al resto de cuidadores.
 
-### 4. Notificaciones por WhatsApp (Twilio)
-- **Actualización Diaria**: Botón ubicado en la barra superior ("Actualización Diaria") que envía el turno del día y las actividades médicas.
-- **Notificación Semanal**: Botón ubicado abajo a la derecha del cuadrante semanal ("Enviar a toda la semana") con mensaje consolidado de todos los turnos y actividades.
+### 4. Generación y Envío de Resumen Individual por WhatsApp
+- **Modal Flotante de Envío Individual**: Disponible tanto desde la barra de navegación superior (**"WhatsApp"**) como en la barra inferior del cuadrante semanal (**"Enviar por WhatsApp"**), diseñado en Tailwind CSS con fondo semitransparente.
+- **Selector Dinámico de Integrantes**: Lista a todas las personas/cuidadores disponibles junto a su número de teléfono registrado (`Nombre Apellido (+569XXXXXXXX)`).
+- **Selector de Rango Temporal Flexible**:
+  - **Toda la semana**: Consolida en un solo mensaje todos los turnos, medicamentos y actividades de los 7 días de la semana actual.
+  - **Día específico**: Despliega un selector secundario con los días de la semana (Lunes a Domingo) para enviar únicamente el resumen de la jornada seleccionada.
+- **Validación Automática**: Si la persona seleccionada no tiene turnos ni tareas registradas en el periodo elegido, el sistema emite una alerta explicativa y previene el envío.
+- **Estructura Ordenada con Emojis**:
+  - 🏥 **Sus Turnos**: Fecha, bloque asignado, horarios (`HH:MM - HH:MM hrs`) y etiqueta `[REUNIÓN FAMILIAR]` si corresponde.
+  - 💊 **Sus Medicamentos**: Listado de fármacos con tomas horarias e indicación médica (opcional).
+  - 📝 **Sus Actividades**: Procedimientos clínicos, horario, profesional a cargo y descripción detallada.
+- **Enlace Directo (`wa.me`)**: Codifica el mensaje con `encodeURIComponent` y abre directamente la conversación en WhatsApp Web / WhatsApp Mobile (`https://wa.me/{telefono}?text={mensaje}`).
 
 ### 5. Asignación de Turnos con Horario Libre (00:00 a 23:59)
 - Horario de inicio y fin libremente configurable de 00:00 a 23:59 hrs.
@@ -119,7 +128,8 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
 - `DELETE /api/medicamentos/{tratamiento_id}`: Eliminar un tratamiento y todos sus horarios asociados en cascada.
 - `DELETE /api/medicamentos/horarios/{horario_id}`: Eliminar un horario de administración puntual.
 
-### Notificaciones WhatsApp
+### Notificaciones y Enlace WhatsApp
+- **Generador de Enlace Directo**: Funcionalidad Frontend integrada que construye la URL oficial `https://wa.me/{telefono}?text={mensaje}` con el resumen individual estructurado (turnos, medicamentos y actividades).
 - `POST /api/admin/notificaciones/enviar-dia`: Dispara actualización diaria por WhatsApp para la fecha indicada.
 - `POST /api/admin/notificaciones/enviar-semana`: Dispara notificación semanal consolidada por WhatsApp a todos los cuidadores de la semana.
 

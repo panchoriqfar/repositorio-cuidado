@@ -73,9 +73,9 @@
                         <i class="fa-solid fa-pills text-rose-500"></i>
                         <span class="hidden sm:inline">Medicamentos</span>
                     </button>
-                    <button onclick="openNotificacionModal()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" title="Actualización Diaria por WhatsApp">
+                    <button onclick="openModalWhatsAppIndividual()" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" title="Enviar Resumen Individual por WhatsApp">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
-                        <span class="hidden sm:inline">Actualización Diaria</span>
+                        <span class="hidden sm:inline">WhatsApp</span>
                     </button>
                     <button onclick="openNotificacionEmailModal()" id="btnCorreoDiario" class="px-2.5 sm:px-3 py-1.5 text-xs font-medium bg-sky-600 hover:bg-sky-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-1.5" title="Enviar Correo Diario a cuidadores en turno">
                         <i class="fa-solid fa-envelope text-sm"></i>
@@ -182,10 +182,10 @@
                     <i class="fa-solid fa-file-image text-sm"></i>
                     <span>Generar Imagen Semanal</span>
                 </button>
-                <button onclick="ejecutarEnvioWhatsAppSemanal()" id="btnWhatsAppSemanal"
-                    class="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                <button onclick="openModalWhatsAppIndividual('semana')" id="btnWhatsAppSemanal"
+                    class="px-4 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
                     <i class="fa-brands fa-whatsapp text-sm"></i>
-                    <span>Enviar a toda la semana</span>
+                    <span>Enviar por WhatsApp</span>
                 </button>
                 <button onclick="ejecutarEnvioCorreoSemanal()" id="btnCorreoSemanal"
                     class="px-4 py-2 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
@@ -750,41 +750,91 @@
         </div>
     </div>
 
-    <!-- 6. MODAL NOTIFICACIONES POR WHATSAPP -->
-    <div id="notificacionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
-            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div class="flex items-center space-x-2 text-emerald-600">
-                    <i class="fa-brands fa-whatsapp text-2xl"></i>
-                    <h3 class="font-bold text-slate-900 text-lg">Envío de Turnos por WhatsApp</h3>
+    <!-- 6. MODAL NOTIFICACIONES POR WHATSAPP INDIVIDUAL -->
+    <div id="modalWhatsAppIndividual" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+            <!-- Encabezado del Modal -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-3 text-[#25D366]">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-[#25D366] shadow-sm">
+                        <i class="fa-brands fa-whatsapp text-2xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-lg leading-tight">Enviar Resumen por WhatsApp</h3>
+                        <p class="text-[11px] text-slate-500">Resumen individual con turnos, medicamentos y actividades</p>
+                    </div>
                 </div>
-                <button onclick="closeNotificacionModal()" class="text-slate-400 hover:text-slate-600 text-lg p-1">&times;</button>
+                <button type="button" onclick="closeModalWhatsAppIndividual()" class="text-slate-400 hover:text-slate-600 text-xl p-1 leading-none rounded-lg hover:bg-slate-100 transition-colors">&times;</button>
             </div>
 
-            <p class="text-xs text-slate-600">
-                Notifica automáticamente a los <strong>cuidadores en turno</strong> con su horario asignado de inicio y fin, y el listado de actividades médicas programadas para la jornada.
-            </p>
+            <!-- Contenido de Selectores -->
+            <div class="space-y-3.5">
+                <!-- Selector de Integrante -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-user text-slate-400 text-xs"></i>
+                        <span>Integrante / Persona:</span>
+                    </label>
+                    <select id="waIntegranteSelect" class="w-full px-3 py-2 text-xs font-medium border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm">
+                        <option value="">Cargando personas...</option>
+                    </select>
+                </div>
 
-            <div class="flex items-center space-x-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <label class="text-xs font-semibold text-slate-700">Fecha objetivo:</label>
-                <input type="date" id="notifFecha" class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                <button onclick="ejecutarEnvioWhatsApp()" id="btnDispararWhatsApp" class="px-4 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5 ml-auto">
-                    <i class="fa-solid fa-paper-plane"></i>
-                    <span>Disparar Envío Ahora</span>
+                <!-- Selector de Rango de Tiempo -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-calendar-days text-slate-400 text-xs"></i>
+                        <span>Rango de tiempo:</span>
+                    </label>
+                    <select id="waRangoTiempoSelect" onchange="toggleWaRangoTiempo()" class="w-full px-3 py-2 text-xs font-medium border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm">
+                        <option value="semana">📅 Toda la semana actual</option>
+                        <option value="dia">📆 Día específico</option>
+                    </select>
+                </div>
+
+                <!-- Selector Secundario: Días de la semana (Lunes a Domingo) -->
+                <div id="waDiaEspecificoContainer" class="hidden transition-all">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-calendar-check text-emerald-600 text-xs"></i>
+                        <span>Selecciona el día de la semana:</span>
+                    </label>
+                    <select id="waDiaSelect" class="w-full px-3 py-2 text-xs font-medium border border-emerald-300 bg-emerald-50/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm">
+                        <!-- Opciones dinámicas de Lunes a Domingo -->
+                    </select>
+                </div>
+
+                <!-- Detalle informativo con estructura del mensaje -->
+                <div class="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 space-y-1.5">
+                    <div class="font-semibold text-slate-700 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i>
+                        <span>Estructura que se enviará al chat de WhatsApp:</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5 text-center pt-0.5">
+                        <div class="bg-white p-1.5 rounded-lg border border-slate-200/70">
+                            <div class="font-bold text-slate-800 text-[11px]">🏥 Turnos</div>
+                            <div class="text-[10px] text-slate-400">Horarios y bloques</div>
+                        </div>
+                        <div class="bg-white p-1.5 rounded-lg border border-slate-200/70">
+                            <div class="font-bold text-slate-800 text-[11px]">💊 Medicamentos</div>
+                            <div class="text-[10px] text-slate-400">Dosis y tomas</div>
+                        </div>
+                        <div class="bg-white p-1.5 rounded-lg border border-slate-200/70">
+                            <div class="font-bold text-slate-800 text-[11px]">📝 Actividades</div>
+                            <div class="text-[10px] text-slate-400">Cuidados y visitas</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onclick="closeModalWhatsAppIndividual()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors">
+                    Cancelar
                 </button>
-            </div>
-
-            <!-- Contenedor de Resultados -->
-            <div id="notifResultados" class="hidden space-y-3">
-                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-100 text-xs font-semibold text-slate-700">
-                    <span>Total asignaciones: <strong id="resTotal">0</strong></span>
-                    <span class="text-emerald-700">Enviados: <strong id="resEnviados">0</strong></span>
-                    <span class="text-rose-700">Errores: <strong id="resErrores">0</strong></span>
-                </div>
-
-                <div class="max-h-60 overflow-y-auto space-y-2 pr-1" id="resDetallesLista">
-                    <!-- Detalle -->
-                </div>
+                <button type="button" onclick="generarYEnviarWAIndividual()" id="btnEnviarWAIndividual" class="px-5 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer">
+                    <i class="fa-brands fa-whatsapp text-sm"></i>
+                    <span>Generar y Enviar por WhatsApp</span>
+                </button>
             </div>
         </div>
     </div>

@@ -1120,75 +1120,317 @@ async function desactivarMedico(idMedico) {
 }
 
 
-// --- ACCIONES ADMIN: WHATSAPP ---
+// --- ACCIONES ADMIN: WHATSAPP INDIVIDUAL ---
+function formatFechaIsoVisual(fechaIso) {
+    if (!fechaIso) return "";
+    const partes = String(fechaIso).split("-");
+    if (partes.length === 3) {
+        return `${partes[2]}/${partes[1]}/${partes[0]}`;
+    }
+    return fechaIso;
+}
+
+async function openModalWhatsAppIndividual(rangoInicial = "semana") {
+    const modal = document.getElementById("modalWhatsAppIndividual");
+    if (!modal) return;
+
+    // Asegurar que cuidadores estén cargados en cache
+    if (!listaCuidadoresCache || listaCuidadoresCache.length === 0) {
+        try {
+            const resC = await fetch("/api/admin/cuidadores");
+            if (resC.ok) listaCuidadoresCache = await resC.json();
+        } catch (e) {
+            console.error("Error al cargar lista de cuidadores:", e);
+        }
+    }
+
+    // Asegurar que cuadrante esté cargado
+    if (!cuadranteData) {
+        try {
+            await cargarCuadrante();
+        } catch (e) {
+            console.error("Error al cargar cuadrante:", e);
+        }
+    }
+
+    // Poblar Selector de Integrantes
+    const selIntegrante = document.getElementById("waIntegranteSelect");
+    if (selIntegrante) {
+        selIntegrante.innerHTML = '<option value="">-- Selecciona un integrante --</option>';
+        const personas = (listaCuidadoresCache || []).filter(c => c.activo !== false);
+        personas.forEach(c => {
+            const nom = `${c.nombre} ${c.apellido || ''}`.trim();
+            const tel = c.telefono_whatsapp ? c.telefono_whatsapp : "Sin teléfono";
+            const opt = document.createElement("option");
+            opt.value = c.id_cuidador;
+            opt.textContent = `${nom} (${tel})`;
+            selIntegrante.appendChild(opt);
+        });
+    }
+
+    // Poblar Selector Secundario de Días de la Semana (Lunes a Domingo)
+    const selDia = document.getElementById("waDiaSelect");
+    if (selDia && cuadranteData && Array.isArray(cuadranteData.dias)) {
+        selDia.innerHTML = "";
+        const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        cuadranteData.dias.forEach(d => {
+            const dObj = new Date(d.fecha + "T00:00:00");
+            const diaVisual = `${d.nombre} ${dObj.getDate()} ${meses[dObj.getMonth()]}`;
+            const opt = document.createElement("option");
+            opt.value = d.fecha;
+            opt.textContent = `${diaVisual}${d.es_hoy ? " (HOY)" : ""}`;
+            if (d.es_hoy) opt.selected = true;
+            selDia.appendChild(opt);
+        });
+    }
+
+    // Establecer Rango inicial
+    const selRango = document.getElementById("waRangoTiempoSelect");
+    if (selRango) {
+        selRango.value = rangoInicial === "dia" ? "dia" : "semana";
+    }
+    toggleWaRangoTiempo();
+
+    modal.classList.remove("hidden");
+}
+
+function closeModalWhatsAppIndividual() {
+    const modal = document.getElementById("modalWhatsAppIndividual");
+    if (modal) modal.classList.add("hidden");
+}
+
+// Aliases para compatibilidad total con botones existentes
 function openNotificacionModal() {
-    const inputFecha = document.getElementById("notifFecha");
-    if (inputFecha) inputFecha.value = formatDateIso(fechaActual || new Date());
-    document.getElementById("notifResultados").classList.add("hidden");
-    document.getElementById("notificacionModal").classList.remove("hidden");
+    openModalWhatsAppIndividual("dia");
 }
 
 function closeNotificacionModal() {
-    document.getElementById("notificacionModal").classList.add("hidden");
+    closeModalWhatsAppIndividual();
 }
 
-async function ejecutarEnvioWhatsApp() {
-    const token = getToken();
-    const fecha = document.getElementById("notifFecha").value;
-    const btn = document.getElementById("btnDispararWhatsApp");
-    const resDiv = document.getElementById("notifResultados");
-    const listaDet = document.getElementById("resDetallesLista");
+function toggleWaRangoTiempo() {
+    const selRango = document.getElementById("waRangoTiempoSelect");
+    const containerDia = document.getElementById("waDiaEspecificoContainer");
+    if (!selRango || !containerDia) return;
 
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enviando...`;
-
-    try {
-        const res = await fetch("/api/admin/notificaciones/enviar-dia", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify({ fecha })
-        });
-
-        if (res.ok) {
-            const data = await res.json();
-            document.getElementById("resTotal").textContent = data.total_asignaciones;
-            document.getElementById("resEnviados").textContent = data.enviados;
-            document.getElementById("resErrores").textContent = data.errores;
-
-            if (data.detalles.length === 0) {
-                listaDet.innerHTML = `<p class="text-xs text-slate-500 py-2">No se encontraron asignaciones de cuidadores para la fecha seleccionada.</p>`;
-            } else {
-                listaDet.innerHTML = data.detalles.map(d => `
-                    <div class="p-2.5 rounded-lg border border-slate-200 bg-white space-y-1">
-                        <div class="flex items-center justify-between text-xs font-bold">
-                            <span>${d.personal} (${d.telefono})</span>
-                            <span class="${d.estado.includes('ENVIADO') ? 'text-emerald-600' : 'text-rose-600'}">
-                                ${d.estado}
-                            </span>
-                        </div>
-                        <div class="text-[11px] text-slate-600">Bloque: ${d.bloque} &bull; Horario: <strong>${d.horario}</strong></div>
-                        ${d.detalle_error ? `<div class="text-[10px] text-amber-600">${d.detalle_error}</div>` : ''}
-                    </div>
-                `).join("");
-            }
-
-            resDiv.classList.remove("hidden");
-            cargarCuadrante();
-        } else {
-            const err = await res.json();
-            alert(err.detail || "Error al disparar notificaciones");
-        }
-    } catch (e) {
-        alert("Error de conexión");
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> <span>Disparar Envío Ahora</span>`;
+    if (selRango.value === "dia") {
+        containerDia.classList.remove("hidden");
+    } else {
+        containerDia.classList.add("hidden");
     }
 }
 
+function generarYEnviarWAIndividual() {
+    const selIntegrante = document.getElementById("waIntegranteSelect");
+    const idCuidador = selIntegrante ? selIntegrante.value : "";
+    if (!idCuidador) {
+        alert("Por favor selecciona a un integrante de la lista.");
+        return;
+    }
+
+    const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(idCuidador));
+    if (!cuid) {
+        alert("No se encontró la información del integrante seleccionado.");
+        return;
+    }
+
+    const nombreCompleto = `${cuid.nombre} ${cuid.apellido || ''}`.trim();
+
+    // Validar teléfono de WhatsApp
+    const rawTel = (cuid.telefono_whatsapp || "").trim();
+    let telLimpio = rawTel.replace(/[^0-9]/g, "");
+    if (!telLimpio) {
+        alert(`El integrante seleccionado (${nombreCompleto}) no tiene un número de WhatsApp registrado.`);
+        return;
+    }
+    // Formato internacional wa.me (Chile +56)
+    if (telLimpio.length === 9 && telLimpio.startsWith("9")) {
+        telLimpio = "56" + telLimpio;
+    }
+
+    const selRango = document.getElementById("waRangoTiempoSelect");
+    const rango = selRango ? selRango.value : "semana";
+
+    if (!cuadranteData || !Array.isArray(cuadranteData.dias) || cuadranteData.dias.length === 0) {
+        alert("No se tienen cargados los datos del horario de la semana.");
+        return;
+    }
+
+    let diasTarget = [];
+    let periodoTexto = "";
+    if (rango === "dia") {
+        const fechaElegida = document.getElementById("waDiaSelect")?.value;
+        const diaObj = cuadranteData.dias.find(d => d.fecha === fechaElegida) || cuadranteData.dias[0];
+        diasTarget = [diaObj];
+        periodoTexto = `${diaObj.nombre} ${formatFechaIsoVisual(diaObj.fecha)}`;
+    } else {
+        diasTarget = cuadranteData.dias;
+        periodoTexto = `Semana del ${formatFechaIsoVisual(cuadranteData.inicio_semana)} al ${formatFechaIsoVisual(cuadranteData.fin_semana)}`;
+    }
+
+    // 1. Filtrar TURNOS de la persona en el periodo
+    const turnosEncontrados = [];
+    const diasConTurnoFechas = new Set();
+    const jornadasCuidadorPorDia = {};
+
+    (cuadranteData.bloques || []).forEach(bloque => {
+        diasTarget.forEach(d => {
+            const asigs = cuadranteData.matriz?.[bloque.id_bloque]?.[d.fecha];
+            if (asigs) {
+                const listaAsigs = Array.isArray(asigs) ? asigs : [asigs];
+                listaAsigs.forEach(asig => {
+                    if (String(asig.id_cuidador) === String(idCuidador)) {
+                        turnosEncontrados.push({
+                            diaFecha: d.fecha,
+                            diaNombre: d.nombre,
+                            bloque: bloque.nombre_bloque,
+                            hora_inicio: asig.hora_inicio,
+                            hora_fin: asig.hora_fin,
+                            horario_texto: asig.horario_texto || `${asig.hora_inicio} - ${asig.hora_fin}`,
+                            reunion_familiar: !!asig.reunion_familiar
+                        });
+                        diasConTurnoFechas.add(d.fecha);
+                        if (!jornadasCuidadorPorDia[d.fecha]) jornadasCuidadorPorDia[d.fecha] = [];
+                        jornadasCuidadorPorDia[d.fecha].push({
+                            hora_inicio: asig.hora_inicio,
+                            hora_fin: asig.hora_fin
+                        });
+                    }
+                });
+            }
+        });
+    });
+
+    // 2. Filtrar MEDICAMENTOS correspondientes en el periodo para sus jornadas
+    const medicamentosEncontrados = [];
+    const medicamentosVistos = new Set();
+
+    diasTarget.forEach(d => {
+        if (!diasConTurnoFechas.has(d.fecha)) return;
+        const jornadas = jornadasCuidadorPorDia[d.fecha] || [];
+
+        (listaTratamientosCache || []).forEach(trat => {
+            if (!trat.dia_inicial || d.fecha < trat.dia_inicial) return;
+
+            // Verificar si hay horarios explícitos para este día
+            const explicit = (trat.horarios || []).filter(h => h.dia === d.fecha);
+            let horasDelDia = [];
+            if (explicit.length > 0) {
+                horasDelDia = explicit.map(h => (h.hora || "").slice(0, 5)).filter(Boolean);
+            } else {
+                // Arrastrado: replicar horarios del día inicial o lista base
+                const baseHoras = (trat.horarios || []).filter(h => h.dia === trat.dia_inicial);
+                const source = baseHoras.length > 0 ? baseHoras : (trat.horarios || []);
+                horasDelDia = Array.from(new Set(source.map(h => (h.hora || "").slice(0, 5)).filter(Boolean)));
+            }
+
+            if (horasDelDia.length > 0 && jornadas.length > 0) {
+                const medKey = `${d.fecha}_${trat.nombre_medicamento}`;
+                if (!medicamentosVistos.has(medKey)) {
+                    medicamentosVistos.add(medKey);
+                    const nomMed = trat.personal_medico
+                        ? `${trat.personal_medico.nombre} ${trat.personal_medico.apellido || ''}`.trim()
+                        : "";
+                    medicamentosEncontrados.push({
+                        diaFecha: d.fecha,
+                        diaNombre: d.nombre,
+                        nombre: trat.nombre_medicamento,
+                        horas: horasDelDia.sort(),
+                        medico: nomMed
+                    });
+                }
+            }
+        });
+    });
+
+    // 3. Filtrar ACTIVIDADES MÉDICAS correspondientes en el periodo para sus jornadas
+    const actividadesEncontradas = [];
+    const actividadesVistas = new Set();
+
+    diasTarget.forEach(d => {
+        if (!diasConTurnoFechas.has(d.fecha)) return;
+
+        (listaActividadesCache || []).forEach(act => {
+            if (act.fecha !== d.fecha) return;
+            const actKey = `${d.fecha}_${act.titulo}_${act.hora}`;
+            if (!actividadesVistas.has(actKey)) {
+                actividadesVistas.add(actKey);
+                const nomMed = act.medico_asignado
+                    ? `${act.medico_asignado.nombre} ${act.medico_asignado.apellido || ''}`.trim()
+                    : "";
+                actividadesEncontradas.push({
+                    diaFecha: d.fecha,
+                    diaNombre: d.nombre,
+                    titulo: act.titulo,
+                    hora: (act.hora || "").slice(0, 5),
+                    medico: nomMed,
+                    descripcion: (act.descripcion || "").trim()
+                });
+            }
+        });
+    });
+
+    // VALIDACIÓN: Detener si no tiene registros asignados en ese periodo
+    if (turnosEncontrados.length === 0) {
+        alert(`La persona seleccionada (${nombreCompleto}) no tiene turnos ni registros asignados para ${periodoTexto}.`);
+        return;
+    }
+
+    // Ordenar turnos cronológicamente
+    turnosEncontrados.sort((a, b) => a.diaFecha.localeCompare(b.diaFecha) || a.hora_inicio.localeCompare(b.hora_inicio));
+
+    // REDACTAR MENSAJE ESTRUCTURADO CON EMOJIS
+    let msg = `🏥 *RESUMEN DE TURNOS Y CUIDADOS*\n`;
+    msg += `👤 *Integrante:* ${nombreCompleto}\n`;
+    msg += `📅 *Periodo:* ${periodoTexto}\n\n`;
+
+    // 🏥 SUS TURNOS
+    msg += `🏥 *SUS TURNOS:*\n`;
+    turnosEncontrados.forEach((t, i) => {
+        const rf = t.reunion_familiar ? " *[REUNIÓN FAMILIAR]*" : "";
+        msg += `  ${i + 1}. *${t.diaNombre} ${formatFechaIsoVisual(t.diaFecha)}*: Bloque *${t.bloque}* (${t.horario_texto} hrs)${rf}\n`;
+    });
+    msg += `\n`;
+
+    // 💊 SUS MEDICAMENTOS
+    msg += `💊 *SUS MEDICAMENTOS:*\n`;
+    if (medicamentosEncontrados.length > 0) {
+        medicamentosEncontrados.sort((a, b) => a.diaFecha.localeCompare(b.diaFecha));
+        medicamentosEncontrados.forEach((m, i) => {
+            const horasStr = m.horas.join(", ");
+            const medInfo = m.medico ? ` _(Indicado por: ${m.medico})_` : "";
+            const diaInfo = rango === "semana" ? ` (${m.diaNombre})` : "";
+            msg += `  ${i + 1}. *${m.nombre}*${diaInfo}: ${horasStr} hrs${medInfo}\n`;
+        });
+    } else {
+        msg += `  • No tienes administración de medicamentos programada para tu jornada.\n`;
+    }
+    msg += `\n`;
+
+    // 📝 SUS ACTIVIDADES
+    msg += `📝 *SUS ACTIVIDADES:*\n`;
+    if (actividadesEncontradas.length > 0) {
+        actividadesEncontradas.sort((a, b) => a.diaFecha.localeCompare(b.diaFecha) || a.hora.localeCompare(b.hora));
+        actividadesEncontradas.forEach((a, i) => {
+            const horaStr = a.hora ? `${a.hora} hrs` : "";
+            const medInfo = a.medico ? ` _(A cargo: ${a.medico})_` : "";
+            const descInfo = a.descripcion ? ` - ${a.descripcion}` : "";
+            const diaInfo = rango === "semana" ? ` (${a.diaNombre})` : "";
+            msg += `  ${i + 1}. *${a.titulo}*${diaInfo}: ${horaStr}${medInfo}${descInfo}\n`;
+        });
+    } else {
+        msg += `  • No tienes actividades médicas programadas en tu horario de turno.\n`;
+    }
+    msg += `\n`;
+
+    msg += `_Por favor confirma la recepción de este resumen. ¡Buen turno!_`;
+
+    // ABRIR ENLACE DE WHATSAPP
+    const urlWA = `https://wa.me/${telLimpio}?text=${encodeURIComponent(msg)}`;
+    window.open(urlWA, "_blank");
+
+    closeModalWhatsAppIndividual();
+}
 
 // --- MODAL LOGIN HELPER ---
 function openLoginModal() {
@@ -2991,7 +3233,7 @@ function poblarSelectsMedicosMedicamentos() {
     const select2 = document.getElementById("medConsultaMedico");
 
     if (select1) {
-        select1.innerHTML = '<option value="">Seleccione médico o profesional...</option>';
+        select1.innerHTML = '<option value="">Sin médico asignado (Opcional)...</option>';
         listaMedicosCache.filter(m => m.activo).forEach(m => {
             const opt = document.createElement("option");
             opt.value = m.id_medico;
@@ -3117,10 +3359,7 @@ async function handleCrearTratamiento(e) {
     const diaInicial = document.getElementById("medTratDiaInicial").value;
     const duracionDias = document.getElementById("medTratDuracionDias").value;
 
-    if (!personalMedicoId) {
-        alert("Por favor selecciona un personal médico.");
-        return;
-    }
+
     if (!nombreMed) {
         alert("Por favor ingresa el nombre del medicamento.");
         return;
@@ -3135,7 +3374,7 @@ async function handleCrearTratamiento(e) {
     }
 
     const payload = {
-        personal_medico_id: parseInt(personalMedicoId),
+        personal_medico_id: personalMedicoId ? parseInt(personalMedicoId) : null,
         nombre_medicamento: nombreMed,
         dia_inicial: diaInicial,
         horarios_iniciales: horasInicialesSeleccionadas.map(h => h.length === 5 ? `${h}:00` : h)

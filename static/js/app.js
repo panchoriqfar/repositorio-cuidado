@@ -2483,6 +2483,15 @@ function dibujarPosterSemanal(data, notasTexto) {
     // 6.2 Post-It Amarillo con Actividades Médicas
     dibujarPostItActividades(ctx, 360, 785, 590, 235, notasTexto);
 
+    // 6.3 Firma discreta inferior
+    ctx.save();
+    ctx.font = "italic 500 13px 'Inter', sans-serif";
+    ctx.fillStyle = "rgba(100, 116, 139, 0.7)";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("desarrollado por kyf solutions", width - 40, height - 22);
+    ctx.restore();
+
     return canvas;
 }
 

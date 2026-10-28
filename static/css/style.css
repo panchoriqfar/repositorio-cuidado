@@ -59,20 +59,32 @@
 }
 
 /* Sombra sutil para la columna fija de bloques en el cuadrante */
-.sticky-col-header {
-    position: sticky;
-    left: 0;
-    z-index: 20;
-    background-color: #f1f5f9;
-    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+/* Columna pegajosa con sombra ÚNICAMENTE en pantallas donde hay scroll horizontal */
+@media (max-width: 1023px) {
+    .sticky-col-header {
+        position: sticky;
+        left: 0;
+        z-index: 20;
+        background-color: #f1f5f9;
+        box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+    }
+
+    .sticky-col-cell {
+        position: sticky;
+        left: 0;
+        z-index: 10;
+        background-color: #f8fafc;
+        box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+    }
 }
 
-.sticky-col-cell {
-    position: sticky;
-    left: 0;
-    z-index: 10;
-    background-color: #f8fafc;
-    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+@media (min-width: 1024px) {
+    .sticky-col-header {
+        background-color: #f1f5f9;
+    }
+    .sticky-col-cell {
+        background-color: #f8fafc;
+    }
 }
 
 /* Mejor experiencia táctil en pantallas móviles */

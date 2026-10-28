@@ -41,6 +41,7 @@ async function checkAuth() {
     const adminUsername = document.getElementById("adminUsername");
     const adminQuickActions = document.getElementById("adminQuickActions");
     const loginBtn = document.getElementById("loginBtn");
+    const loginBtnMobile = document.getElementById("loginBtnMobile");
     const btnNuevaAsignacion = document.getElementById("btnNuevaAsignacion");
     const btnNuevaActividad = document.getElementById("btnNuevaActividad");
     const btnGestionUsuarios = document.getElementById("btnGestionUsuarios");
@@ -74,7 +75,8 @@ async function checkAuth() {
             btnLogoutTop.classList.add("hidden");
             btnLogoutTop.classList.remove("inline-flex");
         }
-        loginBtn.classList.remove("hidden");
+        if (loginBtn) loginBtn.classList.remove("hidden");
+        if (loginBtnMobile) loginBtnMobile.classList.remove("hidden");
         return false;
     }
 
@@ -151,7 +153,8 @@ async function checkAuth() {
                 btnLogoutTop.classList.remove("hidden");
                 btnLogoutTop.classList.add("inline-flex");
             }
-            loginBtn.classList.add("hidden");
+            if (loginBtn) loginBtn.classList.add("hidden");
+            if (loginBtnMobile) loginBtnMobile.classList.add("hidden");
 
             // Verificar si el usuario debe cambiar su contraseña (primer login)
             if (user.must_change_password) {

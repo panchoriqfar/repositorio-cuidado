@@ -146,6 +146,7 @@ def construir_contenido_diario(
     nombre = format_nombre_cuidador(cuidador)
     fecha_obj = lista[0].fecha if lista else date.today()
     fecha_str = fecha_obj.strftime("%d/%m/%Y")
+    dia_nom = DIAS_ESPANOL.get(fecha_obj.weekday(), "")
 
     turnos_txt = format_turnos_diarios_texto(lista, estilo="texto")
     turnos_html = format_turnos_diarios_texto(lista, estilo="html")
@@ -216,15 +217,17 @@ def construir_contenido_diario(
 
     cuerpo_texto = "\n".join(lineas_texto)
 
-    # HTML elegante para medicamentos
+    # HTML elegante para medicamentos (Formato Diario Claro)
     medicamentos_html = ""
     if medicamentos:
-        medicamentos_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
+        medicamentos_html = f"<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin: 12px 0;'>"
+        medicamentos_html += f"<div style='font-weight: bold; color: #0f172a; font-size: 14px; margin-bottom: 8px;'>📅 {dia_nom} {fecha_str}:</div>"
+        medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.6;'>"
         for nom_med, data in meds_agrupados.items():
-            horas_str = ", ".join(data["horas"])
+            horas_str = ", ".join(sorted(data["horas"]))
             medico_html = f" <span style='color: #64748b;'>&bull; Indicado por: {data['medico_info'].replace(' - Indicado por: ', '')}</span>" if data["medico_info"] else ""
             medicamentos_html += f"<li><strong>{nom_med}</strong>: <strong>{horas_str} hrs</strong>{medico_html}</li>"
-        medicamentos_html += "</ul>"
+        medicamentos_html += "</ul></div>"
     else:
         medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes administración de medicamentos programada para tu turno.</p>"
 
@@ -346,32 +349,37 @@ def construir_contenido_semanal(
         ""
     ]
 
-    meds_sem_map: Dict[Tuple[date, str], Dict[str, Any]] = {}
+    # Agrupar medicamentos organizados por día para la semana completa
+    meds_por_dia: Dict[date, Dict[str, Dict[str, Any]]] = {}
     if todos_medicamentos:
-        lineas_texto.append("Medicamentos a administrar en tus turnos:")
         for fecha_med, med in todos_medicamentos:
             n_str = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
             h_str = med.hora.strftime("%H:%M")
-            key = (fecha_med, n_str)
-            if key not in meds_sem_map:
+            if fecha_med not in meds_por_dia:
+                meds_por_dia[fecha_med] = {}
+            if n_str not in meds_por_dia[fecha_med]:
                 medico_info = ""
                 if med.tratamiento and med.tratamiento.personal_medico:
                     pm = med.tratamiento.personal_medico
                     nombre_prof = f"{pm.nombre} {pm.apellido or ''}".strip()
                     if nombre_prof:
                         medico_info = f" - Indicado por: {nombre_prof}"
-                meds_sem_map[key] = {
+                meds_por_dia[fecha_med][n_str] = {
                     "horas": [],
                     "medico_info": medico_info
                 }
-            if h_str not in meds_sem_map[key]["horas"]:
-                meds_sem_map[key]["horas"].append(h_str)
+            if h_str not in meds_por_dia[fecha_med][n_str]["horas"]:
+                meds_por_dia[fecha_med][n_str]["horas"].append(h_str)
 
-        for (fecha_med, n_str), data in meds_sem_map.items():
-            dia_nom = DIAS_ESPANOL.get(fecha_med.weekday(), "")
-            f_str = f"{dia_nom} {fecha_med.strftime('%d/%m/%Y')}"
-            horas_str = ", ".join(data["horas"])
-            lineas_texto.append(f"- El día {f_str}: {n_str} a las {horas_str} hrs{data['medico_info']}.")
+    if meds_por_dia:
+        lineas_texto.append("Medicamentos a administrar en tus turnos de la semana (por día):")
+        for f_med in sorted(meds_por_dia.keys()):
+            dia_nom = DIAS_ESPANOL.get(f_med.weekday(), "")
+            f_str = f"{dia_nom} {f_med.strftime('%d/%m/%Y')}"
+            lineas_texto.append(f"\n📅 {f_str}:")
+            for n_str, data in meds_por_dia[f_med].items():
+                horas_str = ", ".join(sorted(data["horas"]))
+                lineas_texto.append(f"  - {n_str}: {horas_str} hrs{data['medico_info']}.")
         lineas_texto.append("")
     else:
         lineas_texto.append("No tienes administración de medicamentos programada en tus turnos.")
@@ -398,15 +406,20 @@ def construir_contenido_semanal(
     dias_items_html = "".join([f"<li style='margin-bottom: 6px;'>{item}</li>" for item in dias_bloques_list])
 
     medicamentos_html = ""
-    if todos_medicamentos:
-        medicamentos_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
-        for (fecha_med, n_str), data in meds_sem_map.items():
-            dia_nom = DIAS_ESPANOL.get(fecha_med.weekday(), "")
-            f_str = f"{dia_nom} {fecha_med.strftime('%d/%m/%Y')}"
-            horas_str = ", ".join(data["horas"])
-            medico_html = f" <span style='color: #64748b;'>&bull; Indicado por: {data['medico_info'].replace(' - Indicado por: ', '')}</span>" if data["medico_info"] else ""
-            medicamentos_html += f"<li>El día <strong>{f_str}</strong>: <strong>{n_str}</strong> a las <strong>{horas_str} hrs</strong>{medico_html}</li>"
-        medicamentos_html += "</ul>"
+    if meds_por_dia:
+        medicamentos_html = "<div style='margin: 12px 0;'>"
+        for f_med in sorted(meds_por_dia.keys()):
+            dia_nom = DIAS_ESPANOL.get(f_med.weekday(), "")
+            f_str = f"{dia_nom} {f_med.strftime('%d/%m/%Y')}"
+            medicamentos_html += f"<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px;'>"
+            medicamentos_html += f"<div style='font-weight: bold; color: #0f172a; font-size: 14px; margin-bottom: 8px;'>📅 {f_str}:</div>"
+            medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.6;'>"
+            for n_str, data in meds_por_dia[f_med].items():
+                horas_str = ", ".join(sorted(data["horas"]))
+                medico_html = f" <span style='color: #64748b;'>&bull; Indicado por: {data['medico_info'].replace(' - Indicado por: ', '')}</span>" if data["medico_info"] else ""
+                medicamentos_html += f"<li><strong>{n_str}</strong>: <strong>{horas_str} hrs</strong>{medico_html}</li>"
+            medicamentos_html += "</ul></div>"
+        medicamentos_html += "</div>"
     else:
         medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 13px;'>No tienes administración de medicamentos programada en tus turnos.</p>"
 

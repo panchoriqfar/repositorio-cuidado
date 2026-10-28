@@ -148,6 +148,7 @@ def build_whatsapp_message(
     lista_ordenada = sorted(lista, key=lambda a: a.hora_inicio)
     fecha_obj = lista_ordenada[0].fecha if lista_ordenada else date.today()
     fecha_str = fecha_obj.strftime("%d/%m/%Y")
+    dia_nom = DIAS_ESPANOL.get(fecha_obj.weekday(), "")
     nombre = format_nombre_cuidador(cuidador)
 
     turnos_wa = format_turnos_diarios_texto(lista_ordenada, estilo="whatsapp")
@@ -160,7 +161,7 @@ def build_whatsapp_message(
 
     # Detalle de Medicamentos de la Jornada
     if medicamentos:
-        mensaje += "\n💊 *Pauta de Medicamentos en tu Turno:*\n"
+        mensaje += f"\n💊 *Medicamentos a administrar hoy ({dia_nom} {fecha_str}):*\n"
         meds_agrupados: Dict[str, Dict[str, Any]] = {}
         for med in medicamentos:
             nom_med = med.tratamiento.nombre_medicamento if med.tratamiento else "Medicamento"
@@ -286,15 +287,24 @@ def build_whatsapp_message_semanal(
                         meds_turno.append(m)
 
             if meds_turno:
-                mensaje += "   💊 *Medicamentos en tu Turno:*\n"
-                meds_agrupados_sem: Dict[str, List[str]] = {}
+                mensaje += f"   💊 *Medicamentos del día ({dia_nom} {fecha_str}):*\n"
+                meds_agrupados_sem: Dict[str, Dict[str, Any]] = {}
                 for m in meds_turno:
                     nom = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
+                    if nom not in meds_agrupados_sem:
+                        medico_info = ""
+                        if m.tratamiento and m.tratamiento.personal_medico:
+                            pm = m.tratamiento.personal_medico
+                            nombre_prof = f"{pm.nombre} {pm.apellido or ''}".strip()
+                            if nombre_prof:
+                                medico_info = f" (Indicado por: {nombre_prof})"
+                        meds_agrupados_sem[nom] = {"horas": [], "medico_info": medico_info}
                     h_str = m.hora.strftime("%H:%M")
-                    if h_str not in meds_agrupados_sem.setdefault(nom, []):
-                        meds_agrupados_sem[nom].append(h_str)
-                for idx, (nom, h_list) in enumerate(meds_agrupados_sem.items(), 1):
-                    mensaje += f"      {idx}. {nom}: {', '.join(h_list)} hrs\n"
+                    if h_str not in meds_agrupados_sem[nom]["horas"]:
+                        meds_agrupados_sem[nom]["horas"].append(h_str)
+                for idx, (nom, data) in enumerate(meds_agrupados_sem.items(), 1):
+                    horas_str = ", ".join(sorted(data["horas"]))
+                    mensaje += f"      {idx}. *{nom}*: {horas_str} hrs{data['medico_info']}\n"
 
         # Cruce estricto: solo actividades dentro de este horario de turno (incluye cruce de medianoche)
         acts_candidatas = []

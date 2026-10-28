@@ -1402,15 +1402,26 @@ function generarYEnviarWAIndividual() {
     });
     msg += `\n`;
 
-    // 💊 SUS MEDICAMENTOS
+    // 💊 SUS MEDICAMENTOS (FORMATO DIARIO ORGANIZADO)
     msg += `💊 *SUS MEDICAMENTOS:*\n`;
     if (medicamentosEncontrados.length > 0) {
-        medicamentosEncontrados.sort((a, b) => a.diaFecha.localeCompare(b.diaFecha));
-        medicamentosEncontrados.forEach((m, i) => {
-            const horasStr = m.horas.join(", ");
-            const medInfo = m.medico ? ` _(Indicado por: ${m.medico})_` : "";
-            const diaInfo = rango === "semana" ? ` (${m.diaNombre})` : "";
-            msg += `  ${i + 1}. *${m.nombre}*${diaInfo}: ${horasStr} hrs${medInfo}\n`;
+        // Agrupar cronológicamente por día
+        const medsPorDiaMap = {};
+        medicamentosEncontrados.forEach(m => {
+            if (!medsPorDiaMap[m.diaFecha]) medsPorDiaMap[m.diaFecha] = [];
+            medsPorDiaMap[m.diaFecha].push(m);
+        });
+
+        const diasOrdenados = Object.keys(medsPorDiaMap).sort();
+        diasOrdenados.forEach(fStr => {
+            const listaM = medsPorDiaMap[fStr];
+            const dObj = (cuadranteData?.dias || []).find(d => d.fecha === fStr) || { nombre: listaM[0]?.diaNombre || "", fecha: fStr };
+            msg += `\n📅 *${dObj.nombre} (${formatFechaIsoVisual(fStr)}):*\n`;
+            listaM.forEach((m, i) => {
+                const horasStr = m.horas.join(", ");
+                const medInfo = m.medico ? ` _(Indicado por: ${m.medico})_` : "";
+                msg += `  ${i + 1}. *${m.nombre}*: ${horasStr} hrs${medInfo}\n`;
+            });
         });
     } else {
         msg += `  • No tienes administración de medicamentos programada para tu jornada.\n`;

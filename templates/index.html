@@ -31,7 +31,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Dancing+Script:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=3.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=4.0">
+    <style>
+        /* Control estricto de visibilidad para Login y Logout en la versión Web */
+        #loginBtn.hidden { display: none !important; }
+        #btnLogoutTop.hidden { display: none !important; }
+        #btnLogoutTop.inline-flex { display: inline-flex !important; }
+        @media (max-width: 767px) { #loginBtn { display: none !important; } }
+    </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
 

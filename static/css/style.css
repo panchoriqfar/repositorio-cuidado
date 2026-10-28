@@ -99,3 +99,9 @@
         touch-action: manipulation;
     }
 }
+
+/* Control estricto de visibilidad para Login y Logout en la version Web */
+#loginBtn.hidden { display: none !important; }
+#btnLogoutTop.hidden { display: none !important; }
+#btnLogoutTop.inline-flex { display: inline-flex !important; }
+@media (max-width: 767px) { #loginBtn { display: none !important; } }

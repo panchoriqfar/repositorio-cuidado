@@ -469,8 +469,6 @@ async function cargarCuadrante() {
                                         estadoHtml = `<span title="Notificado por WhatsApp" class="text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium"><i class="fa-brands fa-whatsapp"></i> Enviado</span>`;
                                     } else if (asig.estado_notificacion === 'ERROR') {
                                         estadoHtml = `<span title="Error WhatsApp" class="text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium"><i class="fa-solid fa-circle-exclamation"></i> Error</span>`;
-                                    } else {
-                                        estadoHtml = `<span title="Pendiente" class="text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium"><i class="fa-regular fa-clock"></i> Pendiente</span>`;
                                     }
 
                                     return `

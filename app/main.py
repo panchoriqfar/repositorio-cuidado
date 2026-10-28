@@ -876,13 +876,14 @@ def registrar_tratamiento_medicamento(
     Registra un tratamiento de medicamento con su día inicial, múltiples horarios iniciales
     y la opción de clonar/agregar nuevos días y horas de forma dinámica.
     """
-    # 1. Verificar existencia del profesional de personal médico
-    medico = db.query(PersonalMedico).filter(PersonalMedico.id_medico == payload.personal_medico_id).first()
-    if not medico:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Personal médico con id {payload.personal_medico_id} no encontrado."
-        )
+    # 1. Verificar existencia del profesional de personal médico si fue proporcionado
+    if payload.personal_medico_id is not None:
+        medico = db.query(PersonalMedico).filter(PersonalMedico.id_medico == payload.personal_medico_id).first()
+        if not medico:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Personal médico con id {payload.personal_medico_id} no encontrado."
+            )
 
     # 2. Instanciar tratamiento
     nuevo_tratamiento = TratamientoMedicamento(

@@ -243,7 +243,7 @@ class MedicamentoHorarioResponse(BaseModel):
         from_attributes = True
 
 class TratamientoMedicamentoBase(BaseModel):
-    personal_medico_id: int = Field(..., description="ID del profesional de personal médico")
+    personal_medico_id: Optional[int] = Field(default=None, description="ID del profesional de personal médico (opcional)")
     nombre_medicamento: str = Field(..., min_length=1, description="Nombre y presentación del medicamento")
     dia_inicial: date = Field(..., description="Fecha inicial del tratamiento")
 

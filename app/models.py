@@ -129,7 +129,7 @@ class TratamientoMedicamento(Base):
     __tablename__ = "tratamiento_medicamentos"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    personal_medico_id = Column(Integer, ForeignKey("personal_medico.id_medico", ondelete="CASCADE"), nullable=False, index=True)
+    personal_medico_id = Column(Integer, ForeignKey("personal_medico.id_medico", ondelete="SET NULL"), nullable=True, index=True)
     nombre_medicamento = Column(String(200), nullable=False)
     dia_inicial = Column(Date, nullable=False, index=True)
 

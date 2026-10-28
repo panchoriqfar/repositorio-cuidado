@@ -401,3 +401,75 @@ def test_enviar_correos_del_dia_y_semanal_medicamento_arrastrado_martes(db_sessi
         assert "Martes 27/10/2026" in texto_sem
         assert "No tienes administración de medicamentos programada" not in texto_sem
 
+
+def test_tratamiento_sin_personal_medico_opcional(db_session):
+    """
+    Verifica que la indicación médica (personal_medico_id) sea completamente opcional.
+    Un tratamiento registrado sin médico debe persistir correctamente con personal_medico_id=None
+    y reflejarse en correos diarios, correos semanales y mensajes de WhatsApp.
+    """
+    from unittest.mock import patch
+
+    martes = date(2026, 10, 27)
+    cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first()
+
+    # Asignación del cuidador el martes
+    asig = AsignacionTurno(
+        id_asignacion=201,
+        id_cuidador=cuid.id_cuidador,
+        fecha=martes,
+        id_bloque=1,
+        hora_inicio=time(8, 0),
+        hora_fin=time(14, 0)
+    )
+    db_session.add(asig)
+
+    # Tratamiento sin médico (personal_medico_id=None)
+    trat_sin_medico = TratamientoMedicamento(
+        id=50,
+        personal_medico_id=None,
+        nombre_medicamento="Omeprazol 20mg",
+        dia_inicial=martes
+    )
+    db_session.add(trat_sin_medico)
+    db_session.flush()
+
+    h1 = MedicamentoHorario(medicamento_id=50, dia=martes, hora=time(8, 30))
+    db_session.add(h1)
+    db_session.commit()
+
+    # 1. Comprobar que en base de datos personal_medico_id es None
+    trat_recuperado = db_session.query(TratamientoMedicamento).filter_by(id=50).first()
+    assert trat_recuperado.personal_medico_id is None
+    assert trat_recuperado.personal_medico is None
+
+    # 2. Comprobar que obtener_medicamentos_programados incluye la toma sin médico
+    tomas = obtener_medicamentos_programados(db_session, martes, martes)
+    nombres_tomas = [t.tratamiento.nombre_medicamento for t in tomas]
+    assert "Omeprazol 20mg" in nombres_tomas
+
+    # 3. Comprobar que construir_contenido_diario genera el correo sin error
+    asunto, texto_diario, html_diario = construir_contenido_diario(cuid, [asig], [], tomas)
+    assert "Omeprazol 20mg" in texto_diario
+    assert "08:30 hrs" in texto_diario
+    assert "Omeprazol 20mg" in html_diario
+
+    # 4. Comprobar envío diario y semanal completo con mock
+    with patch("app.email_service.enviar_email_via_resend") as mock_resend:
+        mock_resend.return_value = {"status": "success", "id": "email_test_sin_medico"}
+        res_d = enviar_correos_del_dia(martes, db_session)
+        assert res_d["enviados"] == 1
+        call_text = mock_resend.call_args[0][2]
+        assert "Omeprazol 20mg" in call_text
+
+        mock_resend.reset_mock()
+        res_s = enviar_correos_semana_completa(martes, db_session)
+        assert res_s["enviados"] >= 1
+        call_text_sem = mock_resend.call_args[0][2]
+        assert "Omeprazol 20mg" in call_text_sem
+
+    # 5. Comprobar WhatsApp diario y semanal
+    wa_diario = build_whatsapp_message(cuid, [asig], [], tomas)
+    assert "Omeprazol 20mg" in wa_diario
+    assert "08:30 hrs" in wa_diario
+

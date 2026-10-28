@@ -69,6 +69,11 @@ async function checkAuth() {
             barraWhatsappSemanal.classList.add("hidden");
             barraWhatsappSemanal.classList.remove("flex");
         }
+        const btnLogoutTop = document.getElementById("btnLogoutTop");
+        if (btnLogoutTop) {
+            btnLogoutTop.classList.add("hidden");
+            btnLogoutTop.classList.remove("inline-flex");
+        }
         loginBtn.classList.remove("hidden");
         return false;
     }
@@ -141,6 +146,11 @@ async function checkAuth() {
                 }
             }
 
+            const btnLogoutTop = document.getElementById("btnLogoutTop");
+            if (btnLogoutTop) {
+                btnLogoutTop.classList.remove("hidden");
+                btnLogoutTop.classList.add("inline-flex");
+            }
             loginBtn.classList.add("hidden");
 
             // Verificar si el usuario debe cambiar su contraseña (primer login)
@@ -401,7 +411,7 @@ async function cargarCuadrante() {
             else if (bloque.codigo_bloque === "N") bloqueBadgeColor = "bg-purple-50 text-purple-700 border-purple-200";
 
             const tdBloque = document.createElement("td");
-            tdBloque.className = "p-4 align-middle bg-slate-50/50 border-r border-slate-100 text-center sm:text-left";
+            tdBloque.className = "p-3 sm:p-4 align-middle sticky-col-cell border-r border-slate-200 text-center sm:text-left";
             tdBloque.innerHTML = `
                 <div class="flex items-center space-x-2">
                     <span class="px-2.5 py-1 text-xs font-bold border rounded-lg uppercase tracking-wide ${bloqueBadgeColor}">${bloque.nombre_bloque}</span>

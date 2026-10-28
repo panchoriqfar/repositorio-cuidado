@@ -42,3 +42,48 @@
 .slot-cell:hover {
     background-color: #f8fafc;
 }
+
+
+/* === OPTIMIZACIONES PARA DISPOSITIVOS MÓVILES === */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.table-scroll-container {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+}
+
+/* Sombra sutil para la columna fija de bloques en el cuadrante */
+.sticky-col-header {
+    position: sticky;
+    left: 0;
+    z-index: 20;
+    background-color: #f1f5f9;
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+}
+
+.sticky-col-cell {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: #f8fafc;
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+}
+
+/* Mejor experiencia táctil en pantallas móviles */
+@media (max-width: 640px) {
+    .modal-content-mobile {
+        max-height: 92vh !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    button, input, select {
+        touch-action: manipulation;
+    }
+}

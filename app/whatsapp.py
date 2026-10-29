@@ -241,9 +241,18 @@ def build_whatsapp_message_semanal(
 
     asignaciones_ordenadas = sorted(asignaciones, key=lambda a: (a.fecha, a.hora_inicio))
 
-    # Recopilar medicamentos y actividades correspondientes a los turnos de la semana
+    # Pauta de medicamentos completa de la semana (sin recortar días por turnos del cuidador)
     meds_semana_todos = []
     vistos_med_sem = set()
+    if medicamentos_por_fecha:
+        for d in sorted(medicamentos_por_fecha.keys()):
+            if inicio_semana <= d <= fin_semana:
+                for m in medicamentos_por_fecha[d]:
+                    nom = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
+                    clave_m = (m.dia, m.hora, nom)
+                    if clave_m not in vistos_med_sem:
+                        vistos_med_sem.add(clave_m)
+                        meds_semana_todos.append(m)
 
     for asig in asignaciones_ordenadas:
         dia_nom = DIAS_ESPANOL.get(asig.fecha.weekday(), "")
@@ -258,17 +267,6 @@ def build_whatsapp_message_semanal(
         dias_turno = [asig.fecha]
         if asig.hora_inicio > asig.hora_fin:
             dias_turno.append(asig.fecha + timedelta(days=1))
-
-        # Cruce estricto: recopilar medicamentos de la semana
-        if medicamentos_por_fecha:
-            for d in dias_turno:
-                for m in medicamentos_por_fecha.get(d, []):
-                    if corresponde_medicamento_a_cuidador(m.dia, m.hora, asig):
-                        nom = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
-                        clave_m = (m.dia, m.hora, nom)
-                        if clave_m not in vistos_med_sem:
-                            vistos_med_sem.add(clave_m)
-                            meds_semana_todos.append(m)
 
         # Cruce estricto: actividades de este turno
         acts_candidatas = []
@@ -341,10 +339,13 @@ def enviar_notificaciones_del_dia(
         .all()
     )
 
+    # Pauta completa de medicamentos de la semana
+    inicio_sem = fecha_seleccionada - timedelta(days=fecha_seleccionada.weekday())
+    fin_sem = inicio_sem + timedelta(days=6)
     medicamentos_dia: List[TomaMedicamento] = obtener_medicamentos_programados(
         db=db,
-        fecha_inicio=fecha_seleccionada,
-        fecha_fin=dia_siguiente
+        fecha_inicio=inicio_sem,
+        fecha_fin=fin_sem
     )
 
     # Agrupar asignaciones por cuidador (solo activos)
@@ -375,10 +376,8 @@ def enviar_notificaciones_del_dia(
             act for act in actividades_dia
             if any(esta_en_jornada_asig(act.fecha, act.hora, a) for a in lista_ordenada)
         ]
-        meds_turno = [
-            m for m in medicamentos_dia
-            if any(corresponde_medicamento_a_cuidador(m.dia, m.hora, a) for a in lista_ordenada)
-        ]
+        # Pauta completa de medicamentos para el cuidador en turno
+        meds_turno = medicamentos_dia
 
         mensaje_texto = build_whatsapp_message(cuidador, lista_ordenada, acts_turno, meds_turno)
         destino_whatsapp = format_whatsapp_number(cuidador.telefono_whatsapp)

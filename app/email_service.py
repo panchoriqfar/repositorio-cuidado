@@ -310,16 +310,16 @@ def construir_contenido_semanal(
                         vistos_actividades.add(clave_act)
                         todas_actividades.append((act.fecha, act))
 
-        # Medicamentos que coincidan con la jornada de este turno o correspondan a este día
-        if medicamentos_por_fecha:
-            for d in dias_turno:
-                for m in medicamentos_por_fecha.get(d, []):
-                    if corresponde_medicamento_a_cuidador(m.dia, m.hora, asig):
-                        nom_m = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
-                        clave_med = (m.dia, m.hora, nom_m)
-                        if clave_med not in vistos_medicamentos:
-                            vistos_medicamentos.add(clave_med)
-                            todos_medicamentos.append((m.dia, m))
+    # Pauta completa de medicamentos de la semana (sin omitir días por turnos del cuidador)
+    if medicamentos_por_fecha:
+        for d in sorted(medicamentos_por_fecha.keys()):
+            if inicio_semana <= d <= fin_semana:
+                for m in medicamentos_por_fecha[d]:
+                    nom_m = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
+                    clave_med = (m.dia, m.hora, nom_m)
+                    if clave_med not in vistos_medicamentos:
+                        vistos_medicamentos.add(clave_med)
+                        todos_medicamentos.append((m.dia, m))
 
     rango_str = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
     hora_actual = datetime.now().strftime("%H:%M:%S")
@@ -492,10 +492,12 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
         .all()
     )
 
+    inicio_sem = fecha_objetivo - timedelta(days=fecha_objetivo.weekday())
+    fin_sem = inicio_sem + timedelta(days=6)
     medicamentos_dia: List[TomaMedicamento] = obtener_medicamentos_programados(
         db=db,
-        fecha_inicio=fecha_objetivo,
-        fecha_fin=dia_siguiente
+        fecha_inicio=inicio_sem,
+        fecha_fin=fin_sem
     )
 
     asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
@@ -538,10 +540,8 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
             act for act in actividades_dia
             if any(esta_en_jornada_asig(act.fecha, act.hora, a) for a in lista_ordenada)
         ]
-        meds_turno = [
-            m for m in medicamentos_dia
-            if any(corresponde_medicamento_a_cuidador(m.dia, m.hora, a) for a in lista_ordenada)
-        ]
+        # Pauta completa de medicamentos para el cuidador a cargo
+        meds_turno = medicamentos_dia
 
         # 3. Construir y enviar vía Resend HTTP API
         try:

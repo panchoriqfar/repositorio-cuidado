@@ -1442,24 +1442,23 @@ function generarYEnviarWAIndividual() {
         });
     });
 
-    // 2. Filtrar MEDICAMENTOS correspondientes en el periodo para sus jornadas
+    // 2. Obtener MEDICAMENTOS del periodo para la pauta completa (sin omitir días por turnos de cuidadores)
     const medicamentosEncontrados = [];
     const medicamentosVistos = new Set();
+    const diasMeds = (cuadranteData && Array.isArray(cuadranteData.dias) && cuadranteData.dias.length > 0)
+        ? cuadranteData.dias
+        : diasTarget;
 
-    diasTarget.forEach(d => {
-        if (!diasConTurnoFechas.has(d.fecha)) return;
-        const jornadas = jornadasCuidadorPorDia[d.fecha] || [];
-
+    diasMeds.forEach(d => {
         (listaTratamientosCache || []).forEach(trat => {
             if (!trat.dia_inicial || d.fecha < trat.dia_inicial) return;
 
-            // Verificar si hay horarios explícitos para este día
+            // Arrastre continuo: buscar horarios explícitos o el previo más reciente
             const explicit = (trat.horarios || []).filter(h => h.dia === d.fecha);
             let horasDelDia = [];
             if (explicit.length > 0) {
                 horasDelDia = explicit.map(h => (h.hora || "").slice(0, 5)).filter(Boolean);
             } else {
-                // Arrastrado continuo: buscar el día con horarios explícitos previo más cercano a d.fecha
                 const previos = (trat.horarios || [])
                     .filter(h => h.dia <= d.fecha)
                     .sort((a, b) => b.dia.localeCompare(a.dia));
@@ -1474,7 +1473,7 @@ function generarYEnviarWAIndividual() {
                 }
             }
 
-            if (horasDelDia.length > 0 && jornadas.length > 0) {
+            if (horasDelDia.length > 0) {
                 const medKey = `${d.fecha}_${trat.nombre_medicamento}`;
                 if (!medicamentosVistos.has(medKey)) {
                     medicamentosVistos.add(medKey);

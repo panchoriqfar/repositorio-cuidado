@@ -704,3 +704,87 @@ def test_construir_y_enviar_solo_medicamentos(db_session):
         assert res_cuid["enviados"] == 1
         assert mock_resend.called
         assert mock_resend.call_args[0][0] == cuid.mail
+
+
+def test_pauta_semanal_completa_sin_recortar_dias_sin_turno(db_session):
+    """
+    Verifica que si un paciente tiene tomas de lunes a sábado y un cuidador solo tiene
+    turnos lunes, martes, miércoles y sábado (sin turno jueves ni viernes), la notificación
+    semanal y diaria del cuidador NO recorte jueves ni viernes y muestre correctamente
+    'de Lunes a Sábado' (en vez de 'de Lunes a Miércoles y Sábado').
+    """
+    lunes = date(2026, 10, 26)
+    sabado = date(2026, 10, 31)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=300,
+        personal_medico_id=1,
+        nombre_medicamento="Amlodipino",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    # Tomas explícitas de lunes a sábado a las 08:00 y 20:00
+    for offset in range(6): # lunes (0) a sábado (5)
+        d = lunes + timedelta(days=offset)
+        h1 = MedicamentoHorario(medicamento_id=300, dia=d, hora=time(8, 0))
+        h2 = MedicamentoHorario(medicamento_id=300, dia=d, hora=time(20, 0))
+        db_session.add_all([h1, h2])
+
+    cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first() # Claudia
+    bloque = db_session.query(BloqueTurno).filter_by(id_bloque=1).first()
+
+    # Claudia solo tiene turnos: Lunes, Martes, Miércoles y Sábado (NO Jueves, NO Viernes)
+    dias_turno_claudia = [
+        lunes,
+        lunes + timedelta(days=1), # Martes
+        lunes + timedelta(days=2), # Miércoles
+        lunes + timedelta(days=5), # Sábado
+    ]
+    asigs_claudia = []
+    for d in dias_turno_claudia:
+        asigs_claudia.append(
+            AsignacionTurno(
+                id_cuidador=cuid.id_cuidador,
+                fecha=d,
+                hora_inicio=time(8, 0),
+                hora_fin=time(14, 0),
+                id_bloque=1,
+                bloque=bloque
+            )
+        )
+    db_session.add_all(asigs_claudia)
+    db_session.commit()
+
+    # Obtener medicamentos de la semana completa
+    tomas_semana = obtener_medicamentos_programados(db_session, lunes, domingo)
+    meds_por_fecha = {}
+    for t in tomas_semana:
+        meds_por_fecha.setdefault(t.dia, []).append(t)
+
+    # 1. Probar Correo Semanal
+    asunto, texto_sem, html_sem = construir_contenido_semanal(
+        cuidador=cuid,
+        asignaciones=asigs_claudia,
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=sabado,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+    # Debe decir 'de Lunes a Sábado' y NO omitir Jueves ni Viernes
+    assert "Amlodipino: de Lunes a Sábado a las 08:00 y 20:00 hrs" in texto_sem
+    assert "de Lunes a Miércoles y Sábado" not in texto_sem
+
+    # 2. Probar WhatsApp Semanal
+    msg_wa_sem = build_whatsapp_message_semanal(
+        cuidador=cuid,
+        asignaciones=asigs_claudia,
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=sabado,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+    assert "*Amlodipino*: de Lunes a Sábado a las 08:00 y 20:00 hrs" in msg_wa_sem
+    assert "de Lunes a Miércoles y Sábado" not in msg_wa_sem

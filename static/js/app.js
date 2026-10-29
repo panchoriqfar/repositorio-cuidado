@@ -15,8 +15,10 @@ let canvasPosterGlobal = null;
 // Inicialización
 document.addEventListener("DOMContentLoaded", async () => {
     actualizarInputFechaPicker(fechaActual);
-    await checkAuth();
-    await cargarDatosIniciales();
+    const isAuthenticated = await checkAuth();
+    if (isAuthenticated) {
+        await cargarDatosIniciales();
+    }
     await cargarCuadrante();
     await cargarActividades();
     await cargarMedicamentos();
@@ -212,8 +214,10 @@ async function handleLogin(e) {
             setToken(data.access_token);
             closeLoginModal();
             await checkAuth();
+            await cargarDatosIniciales();
             await cargarCuadrante();
             await cargarActividades();
+            await cargarMedicamentos();
         } else {
             errorDiv.textContent = data.detail || "Credenciales incorrectas";
             errorDiv.classList.remove("hidden");
@@ -272,11 +276,14 @@ function seleccionarFecha(valorStr) {
 
 // --- CARGAR CUIDADORES, MÉDICOS Y BLOQUES ---
 async function cargarDatosIniciales() {
+    const token = getToken();
+    if (!token) return;
     try {
+        const headers = { "Authorization": `Bearer ${token}` };
         const [resC, resM, resB] = await Promise.all([
-            fetch("/api/admin/cuidadores"),
-            fetch("/api/admin/medicos"),
-            fetch("/api/admin/bloques")
+            fetch("/api/admin/cuidadores", { headers }),
+            fetch("/api/admin/medicos", { headers }),
+            fetch("/api/admin/bloques", { headers })
         ]);
         if (resC.ok) listaCuidadoresCache = await resC.json();
         if (resM.ok) listaMedicosCache = await resM.json();

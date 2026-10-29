@@ -48,20 +48,62 @@ def migrar_esquema_bd(target_engine):
 
 migrar_esquema_bd(engine)
 
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+is_production = ENVIRONMENT in ["production", "prod"]
+
+docs_url = None if is_production else "/docs"
+redoc_url = None if is_production else "/redoc"
+openapi_url = None if is_production else "/openapi.json"
+
 app = FastAPI(
     title="Sistema de Gestión de Turnos de Cuidadores y Actividades Médicas",
     description="API con Control de Acceso Basado en Roles (RBAC: super_user y admin), Gestión de Turnos y Actividades Médicas",
-    version="2.1.0"
+    version="2.1.0",
+    docs_url=docs_url,
+    redoc_url=redoc_url,
+    openapi_url=openapi_url
 )
 
-# CORS
+# Configuración estricta de CORS (evita comodín indiscriminado en producción con credentials)
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+elif is_production:
+    allowed_origins = [
+        "https://medturnospro.cl",
+        "https://app.medturnospro.cl"
+    ]
+else:
+    allowed_origins = [
+        "http://localhost",
+        "http://localhost:8000",
+        "http://127.0.0.1",
+        "http://127.0.0.1:8000"
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
+
+# Manejador global de excepciones para prevenir filtraciones de trazas internas o de base de datos
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    import logging
+    logging.exception(f"Error no controlado en la ruta {request.url.path}: {exc}")
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=getattr(exc, "headers", None)
+        )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Ha ocurrido un error interno en el servidor. Por favor, contacte al administrador."}
+    )
 
 # Configuración de carpetas estáticas y templates
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -164,7 +206,8 @@ def login(creds: schemas.LoginRequest, db: Session = Depends(get_db)):
     if not user or not auth.verify_password(creds.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario o contraseña incorrectos"
+            detail="Usuario o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"}
         )
 
     # Asegurar rol normalizado
@@ -331,7 +374,10 @@ def eliminar_usuario(
 
 # --- GESTIÓN DE CUIDADORES (A QUIENES SE ASIGNAN LOS TURNOS) ---
 @app.get("/api/admin/cuidadores", response_model=List[schemas.CuidadorResponse])
-def listar_cuidadores(db: Session = Depends(get_db)):
+def listar_cuidadores(
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
     return db.query(Cuidador).order_by(Cuidador.nombre.asc()).all()
 
 @app.post("/api/admin/cuidadores", response_model=schemas.CuidadorResponse)
@@ -406,7 +452,10 @@ def eliminar_cuidador(
 
 # --- GESTIÓN DE PERSONAL MÉDICO (ACTIVIDADES Y VISITAS) ---
 @app.get("/api/admin/medicos", response_model=List[schemas.PersonalMedicoResponse])
-def listar_medicos(db: Session = Depends(get_db)):
+def listar_medicos(
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
     return db.query(PersonalMedico).order_by(PersonalMedico.nombre.asc()).all()
 
 @app.post("/api/admin/medicos", response_model=schemas.PersonalMedicoResponse)
@@ -466,7 +515,10 @@ def eliminar_medico(
 
 # --- BLOQUES HORARIOS ---
 @app.get("/api/admin/bloques", response_model=List[schemas.BloqueTurnoResponse])
-def listar_bloques(db: Session = Depends(get_db)):
+def listar_bloques(
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
     return db.query(BloqueTurno).order_by(BloqueTurno.id_bloque.asc()).all()
 
 
@@ -889,6 +941,7 @@ def enviar_email_prueba(
 )
 def registrar_tratamiento_medicamento(
     payload: schemas.TratamientoMedicamentoCreate,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -1101,6 +1154,7 @@ def listar_todos_tratamientos(
 def clonar_o_agregar_horarios(
     tratamiento_id: int,
     payload: schemas.ClonarHorariosRequest,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     """Clonar o agregar nuevos días y horas a un tratamiento existente."""
@@ -1160,6 +1214,7 @@ def clonar_o_agregar_horarios(
 )
 def eliminar_tratamiento_medicamento(
     tratamiento_id: int,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     """Eliminar tratamiento de medicamento y todos sus horarios asociados en cascada."""
@@ -1182,6 +1237,7 @@ def eliminar_tratamiento_medicamento(
 )
 def eliminar_horario_medicamento(
     horario_id: int,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
     db: Session = Depends(get_db)
 ):
     """Eliminar un horario puntual de toma de medicamento."""

@@ -101,38 +101,35 @@ def get_current_user(
     return user
 
 
-def require_super_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
-    """Valida que el usuario tenga rol exclusivo de Super Admin / super_user."""
-    if getattr(current_user, "must_change_password", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Debe cambiar su contraseña obligatoriamente en el primer inicio de sesión antes de continuar."
-        )
-    rol_normalizado = (current_user.rol or "").lower().strip()
-    if rol_normalizado not in ["super_user", "super_admin", "superadmin"] and current_user.rol not in ["SUPER_USER", "SUPER_ADMIN", "SUPERADMIN"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso restringido: Solo el super admin / super_user tiene permisos para esta acción."
-        )
-    return current_user
+class RoleChecker:
+    """
+    Dependencia reutilizable para control de acceso basado en roles (RBAC).
+    Valida roles permitidos y verifica obligatoriedad de cambio de contraseña.
+    """
+    def __init__(self, allowed_roles: list[str]):
+        self.allowed_roles = [r.lower().strip() for r in allowed_roles]
+
+    def __call__(self, current_user: Usuario = Depends(get_current_user)) -> Usuario:
+        if getattr(current_user, "must_change_password", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debe cambiar su contraseña obligatoriamente en el primer inicio de sesión antes de continuar.",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        rol_normalizado = (current_user.rol or "").lower().strip()
+        roles_permitidos_normalizados = set(self.allowed_roles)
+        if "super_user" in roles_permitidos_normalizados:
+            roles_permitidos_normalizados.update(["super_admin", "superadmin"])
+
+        if rol_normalizado not in roles_permitidos_normalizados and (current_user.rol or "").upper() not in [r.upper() for r in self.allowed_roles]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Acceso restringido: Se requieren permisos de {', '.join(self.allowed_roles)}",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        return current_user
 
 
-def require_admin_or_super_user(current_user: Usuario = Depends(get_current_user)) -> Usuario:
-    """Valida que el usuario tenga rol de 'super_user', 'super_admin' o 'admin'."""
-    if getattr(current_user, "must_change_password", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Debe cambiar su contraseña obligatoriamente en el primer inicio de sesión antes de continuar."
-        )
-    rol_normalizado = (current_user.rol or "").lower().strip()
-    roles_permitidos = ["super_user", "super_admin", "superadmin", "admin"]
-    if rol_normalizado not in roles_permitidos and current_user.rol not in ["SUPER_USER", "SUPER_ADMIN", "ADMIN"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso restringido: Se requiere rol de administrador o super admin"
-        )
-    return current_user
-
-
-# Alias de compatibilidad
+require_super_user = RoleChecker(["super_user"])
+require_admin_or_super_user = RoleChecker(["admin", "super_user"])
 get_current_admin = require_admin_or_super_user

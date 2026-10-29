@@ -86,6 +86,31 @@ Para garantizar la compatibilidad total con **Render**, Railway u otros entornos
   - **Descargar JPG** optimizado.
   - **Copiar Imagen al Portapapeles** para pegar directamente con `Ctrl+V` en WhatsApp Web o chat.
 
+
+### 9. Arquitectura de Seguridad, RBAC y Hardening (Auditoría de Seguridad)
+El sistema cuenta con un blindaje integral multicapa tanto en backend (FastAPI) como en frontend:
+- **Control de Acceso Basado en Roles (RBAC con `RoleChecker`)**:
+  - Implementación de la clase de inyección de dependencias `RoleChecker(["admin", "super_user"])` y `RoleChecker(["super_user"])` en `app/auth.py`.
+  - Validación de obligatoriedad de cambio de contraseña (`must_change_password`) en cada petición autenticada.
+  - Emisión estricta de encabezados estándar `WWW-Authenticate: Bearer` en respuestas `401 Unauthorized` y `403 Forbidden`.
+- **Protección de Rutas Administrativas y Datos Sensibles (PII)**:
+  - Blindaje de `GET /api/admin/cuidadores`, `GET /api/admin/medicos` y `GET /api/admin/bloques` con `auth.require_admin_or_super_user`, evitando la exposición de números de WhatsApp y correos electrónicos a usuarios anónimos.
+  - Blindaje de endpoints de escritura y mutación de medicamentos (`POST /api/medicamentos/`, `POST /api/medicamentos/{tratamiento_id}/horarios`, `DELETE /api/medicamentos/{tratamiento_id}` y `DELETE /api/medicamentos/horarios/{horario_id}`).
+- **Prevención de Exposición de Documentación en Producción**:
+  - Detección automática de entorno mediante la variable `ENVIRONMENT`.
+  - Desactivación de `/docs`, `/redoc` y `/openapi.json` cuando `ENVIRONMENT=production`.
+- **Política Estricta de CORS**:
+  - Restricción de orígenes mediante variable `ALLOWED_ORIGINS`. En producción se elimina el uso inseguro de comodines con credenciales (`allow_origins=["*"]`), limitando el acceso a dominios autorizados explícitos.
+- **Manejador Global de Excepciones**:
+  - Implementación de `@app.exception_handler(Exception)` en `app/main.py`. Captura fallos no controlados y previene que trazas internas del intérprete de Python o errores de base de datos (SQLAlchemy) se filtren en las respuestas HTTP hacia el cliente.
+- **Validación y Sanitización Pydantic v2**:
+  - Modelos migrados a `ConfigDict(from_attributes=True)` eliminando advertencias de obsolescencia.
+  - Validación con expresiones regulares del formato chileno oficial `+569XXXXXXXX` para teléfonos y WhatsApp tanto en Cuidadores como en Personal Médico.
+  - Exclusión de hashes de contraseñas y metadatos sensibles en todos los modelos de respuesta (`schemas.UsuarioResponse`).
+- **Aislamiento en Frontend (Defensa en Profundidad)**:
+  - Verificación previa del token de sesión antes de disparar peticiones administrativas en el ciclo `DOMContentLoaded` (`cargarDatosIniciales()`).
+  - Ocultación y bloqueo de acciones de notificación, gestión de cuidadores/médicos y usuarios si la sesión activa carece de los roles requeridos.
+
 ---
 
 ## 🛠️ Stack Tecnológico

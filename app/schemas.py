@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import date, time, datetime
 
@@ -37,8 +37,7 @@ class UsuarioResponse(BaseModel):
     rol: str
     must_change_password: bool = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Esquema para envío WhatsApp semanal ---
@@ -73,8 +72,7 @@ class CuidadorResponse(BaseModel):
     rol_trabajo: Optional[str] = None
     activo: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Esquemas de Personal Médico (Actividades y Visitas Opcionales) ---
@@ -82,7 +80,7 @@ class PersonalMedicoBase(BaseModel):
     nombre: str
     apellido: Optional[str] = ""
     especialidad: str = Field(..., description="Ej: Médico General, Enfermera Universitaria, Kinesiólogo")
-    telefono_whatsapp: Optional[str] = ""
+    telefono_whatsapp: Optional[str] = Field(default="", pattern=r"^(\+569\d{8})?$", description="Formato chileno +569XXXXXXXX (opcional)")
     mail: Optional[str] = None
     activo: bool = True
 
@@ -92,7 +90,7 @@ class PersonalMedicoCreate(PersonalMedicoBase):
 class PersonalMedicoUpdate(BaseModel):
     nombre: Optional[str] = None
     apellido: Optional[str] = None
-    telefono_whatsapp: Optional[str] = None
+    telefono_whatsapp: Optional[str] = Field(default=None, pattern=r"^(\+569\d{8})?$", description="Formato chileno +569XXXXXXXX (opcional)")
     mail: Optional[str] = None
     especialidad: Optional[str] = None
     activo: Optional[bool] = None
@@ -100,8 +98,7 @@ class PersonalMedicoUpdate(BaseModel):
 class PersonalMedicoResponse(PersonalMedicoBase):
     id_medico: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Esquemas de BloqueTurno (AM, PM1, PM2, Nocturno) ---
@@ -114,8 +111,7 @@ class BloqueTurnoBase(BaseModel):
 class BloqueTurnoResponse(BloqueTurnoBase):
     id_bloque: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Esquemas de Asignación de Turno (Soporta múltiples cuidadores por turno) ---
@@ -141,8 +137,7 @@ class AsignacionTurnoResponse(BaseModel):
     cuidador: Optional[CuidadorResponse] = None
     bloque: Optional[BloqueTurnoResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Esquemas de Actividad Médica (Personal Médico opcional) ---
@@ -167,8 +162,7 @@ class ActividadMedicaResponse(ActividadMedicaBase):
     id_actividad: int
     medico_asignado: Optional[PersonalMedicoResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Esquemas de WhatsApp ---
@@ -266,8 +260,7 @@ class MedicamentoHorarioResponse(BaseModel):
     dia: date
     hora: time
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TratamientoMedicamentoBase(BaseModel):
     personal_medico_id: Optional[int] = Field(default=None, description="ID del profesional de personal médico (opcional)")
@@ -313,6 +306,5 @@ class TratamientoMedicamentoResponse(TratamientoMedicamentoBase):
     personal_medico: Optional[PersonalMedicoResponse] = None
     horarios: List[MedicamentoHorarioResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 

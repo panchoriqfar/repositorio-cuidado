@@ -1231,6 +1231,136 @@ function toggleWaRangoTiempo() {
     }
 }
 
+const DIAS_SEMANA_ORDEN_JS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+
+function formatHorasEspanolJS(horasArr) {
+    if (!horasArr || horasArr.length === 0) return "";
+    const sorted = Array.from(new Set(horasArr)).sort();
+    if (sorted.length === 1) {
+        return `a las ${sorted[0]} hrs`;
+    } else if (sorted.length === 2) {
+        return `a las ${sorted[0]} y ${sorted[1]} hrs`;
+    } else {
+        const ult = sorted[sorted.length - 1];
+        const prev = sorted.slice(0, -1).join(", ");
+        return `a las ${prev} y ${ult} hrs`;
+    }
+}
+
+function formatGrupoDiasJS(diasArr) {
+    if (!diasArr || diasArr.length === 0) return "";
+    const diasUnicos = DIAS_SEMANA_ORDEN_JS.filter(d => diasArr.includes(d));
+    if (diasUnicos.length === 0) return diasArr.join(", ");
+    if (diasUnicos.length === 1) return diasUnicos[0];
+
+    const indices = diasUnicos.map(d => DIAS_SEMANA_ORDEN_JS.indexOf(d));
+    const rangos = [];
+    let rActual = [indices[0]];
+    for (let i = 1; i < indices.length; i++) {
+        if (indices[i] === rActual[rActual.length - 1] + 1) {
+            rActual.push(indices[i]);
+        } else {
+            rangos.push(rActual);
+            rActual = [indices[i]];
+        }
+    }
+    rangos.push(rActual);
+
+    if (rangos.every(r => r.length === 1)) {
+        if (diasUnicos.length === 2) return `${diasUnicos[0]} y ${diasUnicos[1]}`;
+        const ult = diasUnicos[diasUnicos.length - 1];
+        const prev = diasUnicos.slice(0, -1).join(", ");
+        return `${prev} y ${ult}`;
+    }
+
+    if (rangos.length === 1) {
+        const r = rangos[0];
+        if (r.length === 2) {
+            return `${DIAS_SEMANA_ORDEN_JS[r[0]]} y ${DIAS_SEMANA_ORDEN_JS[r[1]]}`;
+        } else {
+            return `de ${DIAS_SEMANA_ORDEN_JS[r[0]]} a ${DIAS_SEMANA_ORDEN_JS[r[r.length - 1]]}`;
+        }
+    }
+
+    const partes = rangos.map(r => {
+        if (r.length === 1) return DIAS_SEMANA_ORDEN_JS[r[0]];
+        if (r.length === 2) return `${DIAS_SEMANA_ORDEN_JS[r[0]]} y ${DIAS_SEMANA_ORDEN_JS[r[1]]}`;
+        return `de ${DIAS_SEMANA_ORDEN_JS[r[0]]} a ${DIAS_SEMANA_ORDEN_JS[r[r.length - 1]]}`;
+    });
+
+    if (partes.length === 2) return `${partes[0]} y ${partes[1]}`;
+    const ult = partes[partes.length - 1];
+    const prev = partes.slice(0, -1).join(", ");
+    return `${prev} y ${ult}`;
+}
+
+function formatearPautaMedicamentosJS(medsLista) {
+    if (!medsLista || medsLista.length === 0) return [];
+    const medsMap = {};
+    medsLista.forEach(m => {
+        const nom = m.nombre || "Medicamento";
+        if (!medsMap[nom]) {
+            medsMap[nom] = {
+                medico: m.medico || "",
+                dias: {} // diaFecha -> set of hours
+            };
+        } else if (m.medico && !medsMap[nom].medico) {
+            medsMap[nom].medico = m.medico;
+        }
+
+        if (!medsMap[nom].dias[m.diaFecha]) {
+            medsMap[nom].dias[m.diaFecha] = new Set();
+        }
+        (m.horas || []).forEach(h => medsMap[nom].dias[m.diaFecha].add(h));
+    });
+
+    const resultado = [];
+    Object.keys(medsMap).forEach(nom => {
+        const data = medsMap[nom];
+        const fechasOrdenadas = Object.keys(data.dias).sort();
+        const patrones = {};
+
+        fechasOrdenadas.forEach(fStr => {
+            const horasArr = Array.from(data.dias[fStr]).sort();
+            if (horasArr.length === 0) return;
+            const claveHoras = horasArr.join("|");
+            
+            const partesFecha = fStr.split("-").map(Number);
+            const dt = new Date(partesFecha[0], partesFecha[1] - 1, partesFecha[2]);
+            const diaIndex = (dt.getDay() + 6) % 7;
+            const diaNom = (cuadranteData?.dias || []).find(d => d.fecha === fStr)?.nombre || DIAS_SEMANA_ORDEN_JS[diaIndex];
+
+            if (!patrones[claveHoras]) {
+                patrones[claveHoras] = {
+                    horas: horasArr,
+                    dias: []
+                };
+            }
+            if (!patrones[claveHoras].dias.includes(diaNom)) {
+                patrones[claveHoras].dias.push(diaNom);
+            }
+        });
+
+        const pautas = [];
+        Object.keys(patrones).forEach(k => {
+            const p = patrones[k];
+            const strDias = formatGrupoDiasJS(p.dias);
+            const strHoras = formatHorasEspanolJS(p.horas);
+            pautas.push(`${strDias} ${strHoras}`);
+        });
+
+        const pautasUnidas = pautas.join("; ");
+        const medicoWa = data.medico ? ` _(Indicado por: ${data.medico})_` : "";
+        resultado.push({
+            nombre: nom,
+            medico: data.medico,
+            textoWhatsApp: `*${nom}*: ${pautasUnidas}${medicoWa}`
+        });
+    });
+
+    return resultado;
+}
+
 function generarYEnviarWAIndividual() {
     const selIntegrante = document.getElementById("waIntegranteSelect");
     const idCuidador = selIntegrante ? selIntegrante.value : "";
@@ -1329,10 +1459,19 @@ function generarYEnviarWAIndividual() {
             if (explicit.length > 0) {
                 horasDelDia = explicit.map(h => (h.hora || "").slice(0, 5)).filter(Boolean);
             } else {
-                // Arrastrado: replicar horarios del día inicial o lista base
-                const baseHoras = (trat.horarios || []).filter(h => h.dia === trat.dia_inicial);
-                const source = baseHoras.length > 0 ? baseHoras : (trat.horarios || []);
-                horasDelDia = Array.from(new Set(source.map(h => (h.hora || "").slice(0, 5)).filter(Boolean)));
+                // Arrastrado continuo: buscar el día con horarios explícitos previo más cercano a d.fecha
+                const previos = (trat.horarios || [])
+                    .filter(h => h.dia <= d.fecha)
+                    .sort((a, b) => b.dia.localeCompare(a.dia));
+                if (previos.length > 0) {
+                    const diaMasReciente = previos[0].dia;
+                    const horasMasRecientes = (trat.horarios || []).filter(h => h.dia === diaMasReciente);
+                    horasDelDia = Array.from(new Set(horasMasRecientes.map(h => (h.hora || "").slice(0, 5)).filter(Boolean)));
+                } else {
+                    const baseHoras = (trat.horarios || []).filter(h => h.dia === trat.dia_inicial);
+                    const source = baseHoras.length > 0 ? baseHoras : (trat.horarios || []);
+                    horasDelDia = Array.from(new Set(source.map(h => (h.hora || "").slice(0, 5)).filter(Boolean)));
+                }
             }
 
             if (horasDelDia.length > 0 && jornadas.length > 0) {
@@ -1403,26 +1542,12 @@ function generarYEnviarWAIndividual() {
     });
     msg += `\n`;
 
-    // 💊 SUS MEDICAMENTOS (FORMATO DIARIO ORGANIZADO)
+    // 💊 SUS MEDICAMENTOS (PAUTA AGRUPADA FLUIDA)
     msg += `💊 *SUS MEDICAMENTOS:*\n`;
     if (medicamentosEncontrados.length > 0) {
-        // Agrupar cronológicamente por día
-        const medsPorDiaMap = {};
-        medicamentosEncontrados.forEach(m => {
-            if (!medsPorDiaMap[m.diaFecha]) medsPorDiaMap[m.diaFecha] = [];
-            medsPorDiaMap[m.diaFecha].push(m);
-        });
-
-        const diasOrdenados = Object.keys(medsPorDiaMap).sort();
-        diasOrdenados.forEach(fStr => {
-            const listaM = medsPorDiaMap[fStr];
-            const dObj = (cuadranteData?.dias || []).find(d => d.fecha === fStr) || { nombre: listaM[0]?.diaNombre || "", fecha: fStr };
-            msg += `\n📅 *${dObj.nombre} (${formatFechaIsoVisual(fStr)}):*\n`;
-            listaM.forEach((m, i) => {
-                const horasStr = m.horas.join(", ");
-                const medInfo = m.medico ? ` _(Indicado por: ${m.medico})_` : "";
-                msg += `  ${i + 1}. *${m.nombre}*: ${horasStr} hrs${medInfo}\n`;
-            });
+        const medsAgrupados = formatearPautaMedicamentosJS(medicamentosEncontrados);
+        medsAgrupados.forEach((m, i) => {
+            msg += `  ${i + 1}. ${m.textoWhatsApp}\n`;
         });
     } else {
         msg += `  • No tienes administración de medicamentos programada para tu jornada.\n`;

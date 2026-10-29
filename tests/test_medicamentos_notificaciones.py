@@ -163,7 +163,7 @@ def test_cuidador_martes_recibe_medicamento_arrastrado_diario(db_session):
 
     # Generar contenido diario de email
     subject, text, html = construir_contenido_diario(cuid, asig_martes, [], meds_turno)
-    assert "Enalapril 10mg: 12:00 hrs" in text
+    assert "Enalapril 10mg: Martes a las 12:00 hrs" in text
     assert "Enalapril 10mg" in html
     assert "12:00 hrs" in html
     assert "No tienes administración de medicamentos programada" not in text
@@ -398,7 +398,8 @@ def test_enviar_correos_del_dia_y_semanal_medicamento_arrastrado_martes(db_sessi
 
         assert "Losartan 50mg" in texto_sem
         assert "Losartan 50mg" in html_sem
-        assert "Martes 27/10/2026" in texto_sem
+        assert "Martes 27/10" in texto_sem
+        assert "08:00 y 12:00 hrs" in texto_sem
         assert "No tienes administración de medicamentos programada" not in texto_sem
 
 
@@ -473,3 +474,159 @@ def test_tratamiento_sin_personal_medico_opcional(db_session):
     assert "Omeprazol 20mg" in wa_diario
     assert "08:30 hrs" in wa_diario
 
+
+
+def test_arrastre_continuo_actualizacion_martes(db_session):
+    """
+    Verifica que si un tratamiento inicia el lunes con un horario y el martes se modifica/agregan
+    horarios explícitos, los días siguientes (miércoles a domingo) arrastren la pauta actualizada
+    del martes y no reviertan a la pauta del lunes.
+    """
+    lunes = date(2026, 10, 26)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=99,
+        personal_medico_id=1,
+        nombre_medicamento="Amlodipino",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    # Lunes: 16:00 y 23:59
+    h_lun1 = MedicamentoHorario(medicamento_id=99, dia=lunes, hora=time(16, 0))
+    h_lun2 = MedicamentoHorario(medicamento_id=99, dia=lunes, hora=time(23, 59))
+
+    # Martes: 12:00, 16:00 y 23:59 (cambio de pauta)
+    martes = date(2026, 10, 27)
+    h_mar1 = MedicamentoHorario(medicamento_id=99, dia=martes, hora=time(12, 0))
+    h_mar2 = MedicamentoHorario(medicamento_id=99, dia=martes, hora=time(16, 0))
+    h_mar3 = MedicamentoHorario(medicamento_id=99, dia=martes, hora=time(23, 59))
+
+    db_session.add_all([h_lun1, h_lun2, h_mar1, h_mar2, h_mar3])
+    db_session.commit()
+
+    # Consultar toda la semana
+    tomas = obtener_medicamentos_programados(db_session, lunes, domingo)
+
+    # Verificar que lunes tiene 2 tomas
+    tomas_lunes = [t for t in tomas if t.dia == lunes]
+    assert len(tomas_lunes) == 2
+    assert [t.hora for t in tomas_lunes] == [time(16, 0), time(23, 59)]
+
+    # Verificar que martes tiene 3 tomas
+    tomas_martes = [t for t in tomas if t.dia == martes]
+    assert len(tomas_martes) == 3
+    assert [t.hora for t in tomas_martes] == [time(12, 0), time(16, 0), time(23, 59)]
+
+    # Verificar que miércoles en adelante arrastran las 3 tomas del martes
+    for offset in range(2, 7):
+        dia_check = lunes + timedelta(days=offset)
+        tomas_dia = [t for t in tomas if t.dia == dia_check]
+        assert len(tomas_dia) == 3, f"Fallo en {dia_check}: esperadas 3 tomas arrastradas"
+        assert [t.hora for t in tomas_dia] == [time(12, 0), time(16, 0), time(23, 59)]
+        assert all(t.es_arrastrado for t in tomas_dia)
+
+
+def test_formato_agrupado_ejemplo_usuario(db_session):
+    """
+    Verifica que el formato agrupado coincida exactamente con el ejemplo solicitado por el usuario:
+    'Amlodipino: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs'
+    tanto para correo (texto y HTML) como para WhatsApp (diario y semanal).
+    """
+    from app.medicamentos_service import formatear_pauta_medicamentos
+
+    lunes = date(2026, 10, 26)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=100,
+        personal_medico_id=1,
+        nombre_medicamento="Amlodipino",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    # Lunes: 16:00 y 23:59
+    h_lun1 = MedicamentoHorario(medicamento_id=100, dia=lunes, hora=time(16, 0))
+    h_lun2 = MedicamentoHorario(medicamento_id=100, dia=lunes, hora=time(23, 59))
+
+    # Martes: 12:00, 16:00 y 23:59
+    martes = date(2026, 10, 27)
+    h_mar1 = MedicamentoHorario(medicamento_id=100, dia=martes, hora=time(12, 0))
+    h_mar2 = MedicamentoHorario(medicamento_id=100, dia=martes, hora=time(16, 0))
+    h_mar3 = MedicamentoHorario(medicamento_id=100, dia=martes, hora=time(23, 59))
+
+    db_session.add_all([h_lun1, h_lun2, h_mar1, h_mar2, h_mar3])
+
+    cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first() # Claudia
+    bloque = db_session.query(BloqueTurno).filter_by(id_bloque=1).first()
+
+    # Asignar a Claudia toda la semana
+    asigs_semana = []
+    for d_offset in range(7):
+        f = lunes + timedelta(days=d_offset)
+        asig = AsignacionTurno(
+            id_cuidador=cuid.id_cuidador,
+            fecha=f,
+            hora_inicio=time(8, 0),
+            hora_fin=time(23, 59),
+            id_bloque=1,
+            bloque=bloque
+        )
+        asigs_semana.append(asig)
+    db_session.add_all(asigs_semana)
+    db_session.commit()
+
+    # 1. Obtener tomas de la semana
+    tomas_semana = obtener_medicamentos_programados(db_session, lunes, domingo)
+    assert len(tomas_semana) == 2 + 3 * 6 # 2 (lunes) + 18 (martes a domingo) = 20 tomas
+
+    # 2. Verificar formato agrupado directamente con formatear_pauta_medicamentos
+    resultado_fmt = formatear_pauta_medicamentos(tomas_semana)
+    assert len(resultado_fmt) == 1
+    item_med = resultado_fmt[0]
+
+    assert item_med["nombre"] == "Amlodipino"
+    assert "Lunes a las 16:00 y 23:59 hrs" in item_med["texto_plano"]
+    assert "de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in item_med["texto_plano"]
+    assert "*Amlodipino*: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in item_med["texto_whatsapp"]
+    assert "<strong>Amlodipino</strong>: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in item_med["texto_html"]
+
+    # 3. Verificar en Correo Semanal
+    meds_por_fecha = {}
+    for t in tomas_semana:
+        meds_por_fecha.setdefault(t.dia, []).append(t)
+
+    asunto, texto_sem, html_sem = construir_contenido_semanal(
+        cuidador=cuid,
+        asignaciones=asigs_semana,
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+    assert "Amlodipino: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in texto_sem
+    assert "<strong>Amlodipino</strong>: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in html_sem
+
+    # 4. Verificar en WhatsApp Semanal
+    msg_wa_sem = build_whatsapp_message_semanal(
+        cuidador=cuid,
+        asignaciones=asigs_semana,
+        actividades_por_fecha={},
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha=meds_por_fecha
+    )
+    assert "*Amlodipino*: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in msg_wa_sem
+
+    # 5. Verificar en Correo y WhatsApp Diario (Día Lunes)
+    tomas_lunes = [t for t in tomas_semana if t.dia == lunes]
+    _, texto_diario_lun, html_diario_lun = construir_contenido_diario(cuid, asigs_semana[0], [], tomas_lunes)
+    assert "Amlodipino: Lunes a las 16:00 y 23:59 hrs" in texto_diario_lun
+    assert "<strong>Amlodipino</strong>: Lunes a las 16:00 y 23:59 hrs" in html_diario_lun
+
+    msg_wa_diario_lun = build_whatsapp_message(cuid, asigs_semana[0], [], tomas_lunes)
+    assert "*Amlodipino*: Lunes a las 16:00 y 23:59 hrs" in msg_wa_diario_lun

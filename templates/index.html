@@ -254,13 +254,13 @@
 
                 <div class="w-full sm:w-auto flex flex-wrap items-center gap-2">
                     <!-- Botón WhatsApp Actividades -->
-                    <button onclick="openModalNotifActividades('whatsapp')" id="btnNotifWAActividades" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por WhatsApp">
+                    <button onclick="openModalNotifActividades('whatsapp')" id="btnNotifWAActividades" class="hidden flex-1 sm:flex-initial px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por WhatsApp">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
                         <span>WhatsApp</span>
                     </button>
 
                     <!-- Botón Correo Actividades -->
-                    <button onclick="openModalNotifActividades('email')" id="btnNotifMailActividades" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por Correo Electrónico">
+                    <button onclick="openModalNotifActividades('email')" id="btnNotifMailActividades" class="hidden flex-1 sm:flex-initial px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por Correo Electrónico">
                         <i class="fa-solid fa-envelope text-sm"></i>
                         <span>Correo</span>
                     </button>
@@ -298,13 +298,13 @@
                     </select>
 
                     <!-- Botón WhatsApp Medicamentos -->
-                    <button onclick="openModalNotifMedicamentos('whatsapp')" id="btnNotifWAMedicamentos" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por WhatsApp">
+                    <button onclick="openModalNotifMedicamentos('whatsapp')" id="btnNotifWAMedicamentos" class="hidden flex-1 sm:flex-initial px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por WhatsApp">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
                         <span>WhatsApp</span>
                     </button>
 
                     <!-- Botón Correo Medicamentos -->
-                    <button onclick="openModalNotifMedicamentos('email')" id="btnNotifMailMedicamentos" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por Correo Electrónico">
+                    <button onclick="openModalNotifMedicamentos('email')" id="btnNotifMailMedicamentos" class="hidden flex-1 sm:flex-initial px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por Correo Electrónico">
                         <i class="fa-solid fa-envelope text-sm"></i>
                         <span>Correo</span>
                     </button>
@@ -1483,6 +1483,6 @@
     </div>
 
     <!-- SCRIPT PRINCIPAL CON CACHE-BUSTING -->
-    <script src="/static/js/app.js?v=20.0"></script>
+    <script src="/static/js/app.js?v=21.0"></script>
 </body>
 </html>

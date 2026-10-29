@@ -65,11 +65,20 @@ async function checkAuth() {
             btnGestionUsuarios.classList.add("hidden");
             btnGestionUsuarios.classList.remove("inline-flex");
         }
-        const barraWhatsappSemanal = document.getElementById("barraWhatsappSemanal");
-        if (barraWhatsappSemanal) {
-            barraWhatsappSemanal.classList.add("hidden");
-            barraWhatsappSemanal.classList.remove("flex");
-        }
+        const notifBotones = [
+            "barraWhatsappSemanal",
+            "btnNotifWAActividades",
+            "btnNotifMailActividades",
+            "btnNotifWAMedicamentos",
+            "btnNotifMailMedicamentos"
+        ];
+        notifBotones.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add("hidden");
+                el.classList.remove("flex", "inline-flex");
+            }
+        });
         const btnLogoutTop = document.getElementById("btnLogoutTop");
         if (btnLogoutTop) {
             btnLogoutTop.classList.add("hidden");
@@ -113,12 +122,21 @@ async function checkAuth() {
                 btnNuevoTratamiento.classList.add("inline-flex");
             }
 
-            // Mostrar botón WhatsApp semanal para usuarios autenticados
-            const barraWhatsappSemanal = document.getElementById("barraWhatsappSemanal");
-            if (barraWhatsappSemanal) {
-                barraWhatsappSemanal.classList.remove("hidden");
-                barraWhatsappSemanal.classList.add("flex");
-            }
+            // Mostrar botones de notificaciones (WhatsApp y Correo) exclusivamente para usuarios autenticados
+            const notifBotones = [
+                "barraWhatsappSemanal",
+                "btnNotifWAActividades",
+                "btnNotifMailActividades",
+                "btnNotifWAMedicamentos",
+                "btnNotifMailMedicamentos"
+            ];
+            notifBotones.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.remove("hidden");
+                    el.classList.add("flex");
+                }
+            });
 
             // Visibilidad exclusiva de botones de usuarios: Solo Super Admin
             const btnNavUsuarios = document.getElementById("btnNavUsuarios");
@@ -1165,6 +1183,11 @@ function formatFechaIsoVisual(fechaIso) {
 }
 
 async function openModalWhatsAppIndividual(rangoInicial = "semana") {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar notificaciones.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     const modal = document.getElementById("modalWhatsAppIndividual");
     if (!modal) return;
 
@@ -1385,6 +1408,11 @@ function formatearPautaMedicamentosJS(medsLista) {
 }
 
 function generarYEnviarWAIndividual() {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar mensajes por WhatsApp.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     const selIntegrante = document.getElementById("waIntegranteSelect");
     const idCuidador = selIntegrante ? selIntegrante.value : "";
     if (!idCuidador) {
@@ -3808,6 +3836,11 @@ async function eliminarHorarioIndividualUI(horarioId) {
 let canalNotifMedActivo = 'whatsapp';
 
 function openModalNotifMedicamentos(canal = 'whatsapp') {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar notificaciones de medicamentos.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     canalNotifMedActivo = canal;
     const modal = document.getElementById("modalNotifMedicamentos");
     if (!modal) return;
@@ -4102,6 +4135,11 @@ function copiarTextoNotifMedicamentos() {
 }
 
 async function ejecutarEnvioNotifMedicamentos() {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar notificaciones de medicamentos.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     const fb = document.getElementById("notifMedFeedback");
     if (fb) fb.classList.add("hidden");
 
@@ -4229,6 +4267,11 @@ async function ejecutarEnvioNotifMedicamentos() {
 let canalNotifActActivo = 'whatsapp';
 
 async function openModalNotifActividades(canal = 'whatsapp') {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar notificaciones de actividades médicas.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     canalNotifActActivo = canal;
     const modal = document.getElementById("modalNotifActividades");
     if (!modal) return;
@@ -4487,6 +4530,11 @@ function copiarTextoNotifActividades() {
 }
 
 async function ejecutarEnvioNotifActividades() {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar notificaciones de actividades médicas.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     const fb = document.getElementById("notifActFeedback");
     if (fb) fb.classList.add("hidden");
 
@@ -4612,6 +4660,11 @@ async function ejecutarEnvioNotifActividades() {
 let canalNotifHorarioActivo = 'email';
 
 async function openModalNotifHorario(canal = 'email') {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar horarios y planificaciones.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     canalNotifHorarioActivo = canal;
     const modal = document.getElementById("modalNotifHorario");
     if (!modal) return;
@@ -4977,6 +5030,11 @@ function copiarTextoNotifHorario() {
 }
 
 async function ejecutarEnvioNotifHorario() {
+    if (!getToken()) {
+        alert("Debes iniciar sesión para enviar horarios y planificaciones.");
+        if (typeof openLoginModal === "function") openLoginModal();
+        return;
+    }
     const fb = document.getElementById("notifHorarioFeedback");
     if (fb) fb.classList.add("hidden");
 

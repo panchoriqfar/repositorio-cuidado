@@ -690,3 +690,208 @@ def enviar_correos_semana_completa(fecha_base: date, db: Session) -> Dict[str, A
             })
 
     return resultado
+
+
+
+# ---------------------------------------------------------------------------
+# Notificaciones exclusivas de Pauta de Medicamentos (Solo Medicamentos)
+# ---------------------------------------------------------------------------
+
+def construir_contenido_solo_medicamentos(
+    tomas: List[TomaMedicamento],
+    titulo_periodo: str,
+    nombre_destinatario: str = "Equipo"
+) -> Tuple[str, str, str]:
+    """
+    Construye el asunto, texto plano y HTML exclusivo para la pauta de medicamentos
+    (sin incluir turnos ni actividades), con el formato agrupado por medicamento y horario.
+    """
+    asunto = f"MedTurnos Pro - Pauta de Medicamentos ({titulo_periodo})"
+
+    lineas_texto = [
+        f"Hola {nombre_destinatario},",
+        f"A continuación te compartimos la pauta farmacológica y horarios de medicamentos para el periodo {titulo_periodo}:",
+        ""
+    ]
+
+    if tomas:
+        lineas_texto.append("Medicamentos a administrar:")
+        meds_fmt = formatear_pauta_medicamentos(tomas)
+        for item in meds_fmt:
+            lineas_texto.append(f"- {item['texto_plano']}")
+        lineas_texto.append("")
+    else:
+        lineas_texto.append("No hay administración de medicamentos programada para este periodo.")
+        lineas_texto.append("")
+
+    lineas_texto.append("Sistema Web MedTurnos Pro • Gestión de Medicamentos")
+    cuerpo_texto = "\n".join(lineas_texto)
+
+    # HTML
+    medicamentos_html = ""
+    if tomas:
+        meds_fmt = formatear_pauta_medicamentos(tomas)
+        medicamentos_html = "<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin: 16px 0;'>"
+        medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.7;'>"
+        for item in meds_fmt:
+            medicamentos_html += f"<li style='margin-bottom: 8px;'>{item['texto_html']}</li>"
+        medicamentos_html += "</ul></div>"
+    else:
+        medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No hay administración de medicamentos programada para este periodo.</p>"
+
+    cuerpo_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; background-color: #f8fafc; padding: 20px; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+            <div style="background: linear-gradient(135deg, #e11d48, #be123c); color: white; padding: 22px 24px;">
+                <h2 style="margin: 0; font-size: 20px; letter-spacing: -0.025em;">MedTurnos Pro</h2>
+                <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Pauta de Medicamentos &bull; {titulo_periodo}</p>
+            </div>
+            <div style="padding: 24px;">
+                <p style="font-size: 16px; margin-top: 0;">Hola <strong>{nombre_destinatario}</strong>,</p>
+                <div style="background: #fff1f2; border-left: 4px solid #e11d48; padding: 12px 16px; border-radius: 6px; margin: 16px 0;">
+                    <p style="margin: 0; font-size: 14px; color: #9f1239;">
+                        A continuación te compartimos la pauta farmacológica y horarios de medicamentos para: <strong>{titulo_periodo}</strong>.
+                    </p>
+                </div>
+                <h3 style="font-size: 15px; color: #334155; margin: 20px 0 8px;">💊 Medicamentos y Horarios de Administración:</h3>
+                {medicamentos_html}
+            </div>
+            <div style="background: #f1f5f9; padding: 12px 24px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
+                Sistema Web MedTurnos Pro &bull; Gestión y Pauta de Medicamentos
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return asunto, cuerpo_texto, cuerpo_html
+
+
+def enviar_correos_solo_medicamentos_periodo(
+    db: Session,
+    fecha_inicio: date,
+    fecha_fin: date,
+    destinatario_tipo: str = "todos",
+    id_cuidador: Optional[int] = None,
+    email_manual: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Envía la pauta de medicamentos por correo electrónico vía Resend
+    exclusivamente con la lista de medicamentos y sus horarios (sin turnos ni actividades).
+    """
+    tomas = obtener_medicamentos_programados(db, fecha_inicio, fecha_fin)
+
+    if fecha_inicio == fecha_fin:
+        dia_nom = DIAS_ESPANOL.get(fecha_inicio.weekday(), "")
+        titulo_periodo = f"{dia_nom} {fecha_inicio.strftime('%d/%m/%Y')}"
+    else:
+        titulo_periodo = f"Semana del {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}"
+
+    destinatarios_lista = []
+
+    if destinatario_tipo == "manual":
+        if not email_manual or not es_email_valido(email_manual):
+            return {
+                "tipo": "medicamentos",
+                "periodo": titulo_periodo,
+                "total_cuidadores": 0,
+                "enviados": 0,
+                "omitidos": 1,
+                "errores": 1,
+                "detalles": [{
+                    "id_cuidador": 0,
+                    "cuidador": "Destinatario Manual",
+                    "mail": email_manual or "",
+                    "estado": "ERROR",
+                    "detalle": "Correo electrónico manual no válido."
+                }]
+            }
+        destinatarios_lista.append(("Estimado(a)", email_manual.strip(), 0))
+
+    elif destinatario_tipo == "cuidador" and id_cuidador:
+        cuid = db.query(Cuidador).filter_by(id_cuidador=id_cuidador).first()
+        if not cuid or not es_email_valido(cuid.mail):
+            return {
+                "tipo": "medicamentos",
+                "periodo": titulo_periodo,
+                "total_cuidadores": 1,
+                "enviados": 0,
+                "omitidos": 1,
+                "errores": 0,
+                "detalles": [{
+                    "id_cuidador": id_cuidador,
+                    "cuidador": cuid.nombre if cuid else "Desconocido",
+                    "mail": cuid.mail if cuid else None,
+                    "estado": "OMITIDO",
+                    "detalle": "El cuidador seleccionado no posee un correo electrónico válido."
+                }]
+            }
+        nombre = format_nombre_cuidador(cuid)
+        destinatarios_lista.append((nombre, cuid.mail.strip(), cuid.id_cuidador))
+
+    else:
+        # "todos"
+        cuidadores = db.query(Cuidador).filter_by(activo=True).all()
+        for c in cuidadores:
+            if es_email_valido(c.mail):
+                destinatarios_lista.append((format_nombre_cuidador(c), c.mail.strip(), c.id_cuidador))
+
+    resultado: Dict[str, Any] = {
+        "tipo": "medicamentos",
+        "periodo": titulo_periodo,
+        "total_cuidadores": len(destinatarios_lista),
+        "enviados": 0,
+        "omitidos": 0,
+        "errores": 0,
+        "detalles": []
+    }
+
+    if not destinatarios_lista:
+        resultado["detalles"].append({
+            "id_cuidador": 0,
+            "cuidador": "Sin destinatarios",
+            "mail": None,
+            "estado": "OMITIDO",
+            "detalle": "No se encontraron destinatarios con correo electrónico válido."
+        })
+        return resultado
+
+    for nombre, mail, cuid_id in destinatarios_lista:
+        asunto, texto, html = construir_contenido_solo_medicamentos(tomas, titulo_periodo, nombre)
+        try:
+            resend_resp = enviar_email_via_resend(mail, asunto, texto, html)
+            if isinstance(resend_resp, dict) and resend_resp.get("status") == "error":
+                resultado["errores"] += 1
+                resultado["detalles"].append({
+                    "id_cuidador": cuid_id,
+                    "cuidador": nombre,
+                    "mail": mail,
+                    "estado": "ERROR",
+                    "detalle": resend_resp.get("error", "Error desconocido")
+                })
+                continue
+
+            resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
+            resultado["enviados"] += 1
+            resultado["detalles"].append({
+                "id_cuidador": cuid_id,
+                "cuidador": nombre,
+                "mail": mail,
+                "estado": "ENVIADO",
+                "detalle": f"Pauta de medicamentos enviada vía Resend API (ID: {resp_id})"
+            })
+        except Exception as exc:
+            logger.error(f"Error enviando correo de medicamentos a {mail}: {exc}")
+            resultado["errores"] += 1
+            resultado["detalles"].append({
+                "id_cuidador": cuid_id,
+                "cuidador": nombre,
+                "mail": mail,
+                "estado": "ERROR",
+                "detalle": str(exc)
+            })
+
+    return resultado

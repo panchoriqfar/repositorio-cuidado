@@ -3777,3 +3777,424 @@ async function eliminarHorarioIndividualUI(horarioId) {
 }
 
 
+
+
+// ==============================================================================
+// --- NOTIFICACIONES EXCLUSIVAS DE PAUTA DE MEDICAMENTOS (WHATSAPP Y CORREO) ---
+// ==============================================================================
+
+let canalNotifMedActivo = 'whatsapp';
+
+function openModalNotifMedicamentos(canal = 'whatsapp') {
+    canalNotifMedActivo = canal;
+    const modal = document.getElementById("modalNotifMedicamentos");
+    if (!modal) return;
+
+    // Poblar días disponibles desde cuadranteData
+    const diaSelect = document.getElementById("notifMedDiaSelect");
+    if (diaSelect) {
+        if (cuadranteData && Array.isArray(cuadranteData.dias) && cuadranteData.dias.length > 0) {
+            diaSelect.innerHTML = cuadranteData.dias.map(d => 
+                `<option value="${d.fecha}">${d.nombre} (${formatFechaIsoVisual(d.fecha)})</option>`
+            ).join("");
+        } else {
+            // Generar 7 días de la semana actual si cuadranteData no está listo
+            const hoy = new Date();
+            const diaSem = (hoy.getDay() + 6) % 7;
+            const lunes = new Date(hoy);
+            lunes.setDate(hoy.getDate() - diaSem);
+            let opts = "";
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(lunes);
+                d.setDate(lunes.getDate() + i);
+                const iso = formatDateIso(d);
+                opts += `<option value="${iso}">${DIAS_SEMANA_ORDEN_JS[i]} (${formatFechaIsoVisual(iso)})</option>`;
+            }
+            diaSelect.innerHTML = opts;
+        }
+    }
+
+    // Poblar select de cuidadores WhatsApp
+    const cuidadorWA = document.getElementById("notifMedCuidadorWA");
+    if (cuidadorWA && Array.isArray(listaCuidadoresCache)) {
+        cuidadorWA.innerHTML = `<option value="">-- Seleccionar Integrante --</option>` + 
+            listaCuidadoresCache.map(c => {
+                const tel = c.telefono_whatsapp ? ` (${c.telefono_whatsapp})` : " (Sin WA)";
+                return `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido || ''}${tel}</option>`;
+            }).join("");
+    }
+
+    // Poblar select de cuidadores Correo
+    const cuidadorMail = document.getElementById("notifMedCuidadorMail");
+    if (cuidadorMail && Array.isArray(listaCuidadoresCache)) {
+        cuidadorMail.innerHTML = `<option value="">-- Seleccionar Cuidador --</option>` + 
+            listaCuidadoresCache.map(c => {
+                const mail = c.mail ? ` (${c.mail})` : " (Sin email)";
+                return `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido || ''}${mail}</option>`;
+            }).join("");
+    }
+
+    // Limpiar mensaje feedback
+    const fb = document.getElementById("notifMedFeedback");
+    if (fb) {
+        fb.classList.add("hidden");
+        fb.className = "hidden p-3 rounded-xl text-xs font-medium";
+        fb.innerHTML = "";
+    }
+
+    cambiarCanalNotifMedicamentos(canal);
+    actualizarVistaPreviaNotifMedicamentos();
+
+    modal.classList.remove("hidden");
+}
+
+function closeModalNotifMedicamentos() {
+    const modal = document.getElementById("modalNotifMedicamentos");
+    if (modal) modal.classList.add("hidden");
+}
+
+function cambiarCanalNotifMedicamentos(canal) {
+    canalNotifMedActivo = canal;
+    const tabWA = document.getElementById("tabNotifMedWA");
+    const tabMail = document.getElementById("tabNotifMedMail");
+    const secWA = document.getElementById("seccionDestinatarioWA");
+    const secMail = document.getElementById("seccionDestinatarioMail");
+    const btnEjecutar = document.getElementById("btnEjecutarEnvioNotifMed");
+    const iconHeader = document.getElementById("notifMedHeaderIcon");
+
+    if (canal === 'whatsapp') {
+        tabWA.className = "py-2.5 px-4 border-b-2 border-[#25D366] text-[#128C7E] flex items-center gap-1.5 transition-colors font-bold";
+        tabMail.className = "py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors";
+        secWA.classList.remove("hidden");
+        secMail.classList.add("hidden");
+        btnEjecutar.className = "px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-[#25D366] hover:bg-[#20ba5a]";
+        btnEjecutar.innerHTML = `<i class="fa-brands fa-whatsapp text-sm"></i><span>Abrir en WhatsApp</span>`;
+        if (iconHeader) iconHeader.className = "w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg flex-shrink-0";
+    } else {
+        tabMail.className = "py-2.5 px-4 border-b-2 border-sky-600 text-sky-600 flex items-center gap-1.5 transition-colors font-bold";
+        tabWA.className = "py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors";
+        secMail.classList.remove("hidden");
+        secWA.classList.add("hidden");
+        btnEjecutar.className = "px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700";
+        btnEjecutar.innerHTML = `<i class="fa-solid fa-paper-plane text-sm"></i><span>Enviar Correo</span>`;
+        if (iconHeader) iconHeader.className = "w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg flex-shrink-0";
+    }
+
+    actualizarVistaPreviaNotifMedicamentos();
+}
+
+function onCambioCuidadorNotifMedWA() {
+    const sel = document.getElementById("notifMedCuidadorWA");
+    const inputTel = document.getElementById("notifMedTelManual");
+    if (sel && sel.value && inputTel) {
+        const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(sel.value));
+        if (cuid && cuid.telefono_whatsapp) {
+            inputTel.value = cuid.telefono_whatsapp;
+        }
+    }
+    actualizarVistaPreviaNotifMedicamentos();
+}
+
+function onCambioTipoDestMail() {
+    const sel = document.getElementById("notifMedDestTipoMail");
+    const contCuid = document.getElementById("notifMedMailCuidadorContainer");
+    const contManual = document.getElementById("notifMedMailManualContainer");
+    const tipo = sel ? sel.value : "cuidador";
+
+    if (tipo === "cuidador") {
+        contCuid.classList.remove("hidden");
+        contManual.classList.add("hidden");
+    } else if (tipo === "manual") {
+        contCuid.classList.add("hidden");
+        contManual.classList.remove("hidden");
+    } else {
+        contCuid.classList.add("hidden");
+        contManual.classList.add("hidden");
+    }
+    actualizarVistaPreviaNotifMedicamentos();
+}
+
+function obtenerTomasParaPeriodoJS(periodo, fechaDia) {
+    if (!listaTratamientosCache || listaTratamientosCache.length === 0) return [];
+
+    let diasConsulta = [];
+    if (periodo === 'dia') {
+        const f = fechaDia || formatDateIso(fechaActual || new Date());
+        const dObj = (cuadranteData?.dias || []).find(d => d.fecha === f) || { fecha: f, nombre: "" };
+        diasConsulta = [dObj];
+    } else {
+        // 'semana'
+        if (cuadranteData && Array.isArray(cuadranteData.dias) && cuadranteData.dias.length > 0) {
+            diasConsulta = cuadranteData.dias;
+        } else {
+            const hoy = new Date();
+            const diaSem = (hoy.getDay() + 6) % 7;
+            const lunes = new Date(hoy);
+            lunes.setDate(hoy.getDate() - diaSem);
+            diasConsulta = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(lunes);
+                d.setDate(lunes.getDate() + i);
+                diasConsulta.push({ fecha: formatDateIso(d), nombre: DIAS_SEMANA_ORDEN_JS[i] });
+            }
+        }
+    }
+
+    const tomas = [];
+    diasConsulta.forEach(d => {
+        (listaTratamientosCache || []).forEach(trat => {
+            if (!trat.dia_inicial || d.fecha < trat.dia_inicial) return;
+
+            // Arrastre continuo
+            const explicit = (trat.horarios || []).filter(h => h.dia === d.fecha);
+            let horas = [];
+            if (explicit.length > 0) {
+                horas = explicit.map(h => (h.hora || "").slice(0, 5)).filter(Boolean);
+            } else {
+                const previos = (trat.horarios || [])
+                    .filter(h => h.dia <= d.fecha)
+                    .sort((a, b) => b.dia.localeCompare(a.dia));
+                if (previos.length > 0) {
+                    const diaMasReciente = previos[0].dia;
+                    const horasMasRecientes = (trat.horarios || []).filter(h => h.dia === diaMasReciente);
+                    horas = Array.from(new Set(horasMasRecientes.map(h => (h.hora || "").slice(0, 5)).filter(Boolean)));
+                } else {
+                    const baseHoras = (trat.horarios || []).filter(h => h.dia === trat.dia_inicial);
+                    const source = baseHoras.length > 0 ? baseHoras : (trat.horarios || []);
+                    horas = Array.from(new Set(source.map(h => (h.hora || "").slice(0, 5)).filter(Boolean)));
+                }
+            }
+
+            if (horas.length > 0) {
+                const nomMed = trat.personal_medico
+                    ? `${trat.personal_medico.nombre} ${trat.personal_medico.apellido || ''}`.trim()
+                    : "";
+                tomas.push({
+                    diaFecha: d.fecha,
+                    diaNombre: d.nombre,
+                    nombre: trat.nombre_medicamento,
+                    horas: horas.sort(),
+                    medico: nomMed
+                });
+            }
+        });
+    });
+
+    return tomas;
+}
+
+function construirTextoPautaMedicamentosWA(tomas, periodoTexto, nombreDest = "") {
+    let msg = `🏥 *SISTEMA DE GESTIÓN DE CUIDADOS*\n`;
+    msg += `💊 *PAUTA Y HORARIOS DE MEDICAMENTOS*\n`;
+    msg += `🗓️ *Periodo:* ${periodoTexto}\n\n`;
+
+    if (nombreDest) {
+        msg += `Hola *${nombreDest}*,\n`;
+    }
+    msg += `A continuación te compartimos la pauta farmacológica y horarios de medicamentos programados:\n\n`;
+
+    msg += `💊 *MEDICAMENTOS:*\n`;
+    if (tomas && tomas.length > 0) {
+        const medsAgrupados = formatearPautaMedicamentosJS(tomas);
+        medsAgrupados.forEach((m, idx) => {
+            msg += `  ${idx + 1}. ${m.textoWhatsApp}\n`;
+        });
+    } else {
+        msg += `  • No hay medicamentos programados para este periodo.\n`;
+    }
+
+    msg += `\n_Por favor confirma la recepción de esta pauta farmacológica. ¡Muchas gracias!_`;
+    return msg;
+}
+
+function actualizarVistaPreviaNotifMedicamentos() {
+    const selPeriodo = document.getElementById("notifMedPeriodo");
+    const periodo = selPeriodo ? selPeriodo.value : "semana";
+    const contDia = document.getElementById("notifMedContainerDia");
+    const selDia = document.getElementById("notifMedDiaSelect");
+
+    if (periodo === "dia") {
+        if (contDia) contDia.classList.remove("hidden");
+    } else {
+        if (contDia) contDia.classList.add("hidden");
+    }
+
+    let periodoTexto = "";
+    let fechaDia = "";
+    if (periodo === "dia") {
+        fechaDia = selDia ? selDia.value : formatDateIso(fechaActual || new Date());
+        const dObj = (cuadranteData?.dias || []).find(d => d.fecha === fechaDia);
+        const nom = dObj?.nombre || "";
+        periodoTexto = `${nom} ${formatFechaIsoVisual(fechaDia)}`;
+    } else {
+        if (cuadranteData && cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+            periodoTexto = `Semana del ${formatFechaIsoVisual(cuadranteData.inicio_semana)} al ${formatFechaIsoVisual(cuadranteData.fin_semana)}`;
+        } else {
+            periodoTexto = "Semana Actual";
+        }
+    }
+
+    // Nombre destinatario para el saludo si hay uno seleccionado
+    let nombreDest = "";
+    if (canalNotifMedActivo === 'whatsapp') {
+        const selWA = document.getElementById("notifMedCuidadorWA");
+        if (selWA && selWA.value) {
+            const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selWA.value));
+            if (cuid) nombreDest = cuid.nombre;
+        }
+    } else {
+        const selTipo = document.getElementById("notifMedDestTipoMail")?.value;
+        if (selTipo === "cuidador") {
+            const selMail = document.getElementById("notifMedCuidadorMail");
+            if (selMail && selMail.value) {
+                const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selMail.value));
+                if (cuid) nombreDest = cuid.nombre;
+            }
+        }
+    }
+
+    const tomas = obtenerTomasParaPeriodoJS(periodo, fechaDia);
+    const textoMsg = construirTextoPautaMedicamentosWA(tomas, periodoTexto, nombreDest);
+
+    const contPreview = document.getElementById("notifMedVistaPrevia");
+    if (contPreview) {
+        contPreview.textContent = textoMsg;
+    }
+}
+
+function copiarTextoNotifMedicamentos() {
+    const contPreview = document.getElementById("notifMedVistaPrevia");
+    const texto = contPreview ? contPreview.textContent : "";
+    if (!texto) return;
+
+    navigator.clipboard.writeText(texto).then(() => {
+        const lbl = document.getElementById("btnCopiarTextoLbl");
+        if (lbl) {
+            const original = lbl.textContent;
+            lbl.textContent = "¡Copiado!";
+            setTimeout(() => { lbl.textContent = original; }, 2000);
+        }
+    }).catch(err => {
+        console.error("Error copiando texto:", err);
+    });
+}
+
+async function ejecutarEnvioNotifMedicamentos() {
+    const fb = document.getElementById("notifMedFeedback");
+    if (fb) fb.classList.add("hidden");
+
+    const selPeriodo = document.getElementById("notifMedPeriodo");
+    const periodo = selPeriodo ? selPeriodo.value : "semana";
+    const fechaDia = document.getElementById("notifMedDiaSelect")?.value || formatDateIso(fechaActual || new Date());
+
+    if (canalNotifMedActivo === 'whatsapp') {
+        // Enviar por WhatsApp
+        const inputTel = document.getElementById("notifMedTelManual");
+        let rawTel = (inputTel ? inputTel.value : "").trim();
+        if (!rawTel) {
+            const selWA = document.getElementById("notifMedCuidadorWA");
+            if (selWA && selWA.value) {
+                const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selWA.value));
+                rawTel = (cuid?.telefono_whatsapp || "").trim();
+            }
+        }
+
+        let telLimpio = rawTel.replace(/[^0-9]/g, "");
+        if (!telLimpio) {
+            alert("Por favor selecciona un integrante o ingresa un número de WhatsApp de destino.");
+            return;
+        }
+        if (telLimpio.length === 9 && telLimpio.startsWith("9")) {
+            telLimpio = "56" + telLimpio;
+        }
+
+        const contPreview = document.getElementById("notifMedVistaPrevia");
+        const msg = contPreview ? contPreview.textContent : "";
+
+        const urlWA = `https://wa.me/${telLimpio}?text=${encodeURIComponent(msg)}`;
+        window.open(urlWA, "_blank");
+        closeModalNotifMedicamentos();
+    } else {
+        // Enviar por Correo Electrónico vía API Resend
+        const token = getToken();
+        if (!token) {
+            alert("Debes iniciar sesión para enviar notificaciones por correo.");
+            return;
+        }
+
+        const destTipo = document.getElementById("notifMedDestTipoMail")?.value || "cuidador";
+        const idCuidador = document.getElementById("notifMedCuidadorMail")?.value || null;
+        const mailManual = (document.getElementById("notifMedEmailManual")?.value || "").trim();
+
+        if (destTipo === "cuidador" && !idCuidador) {
+            alert("Por favor selecciona al cuidador de destino.");
+            return;
+        }
+        if (destTipo === "manual" && !mailManual) {
+            alert("Por favor ingresa el correo electrónico de destino.");
+            return;
+        }
+
+        const btn = document.getElementById("btnEjecutarEnvioNotifMed");
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-sm"></i><span>Enviando...</span>`;
+
+        try {
+            const payload = {
+                tipo: periodo,
+                destinatario_tipo: destTipo,
+                id_cuidador: idCuidador ? parseInt(idCuidador, 10) : null,
+                destinatario_email: mailManual || null
+            };
+
+            if (periodo === "dia") {
+                payload.fecha = fechaDia;
+            } else {
+                if (cuadranteData && cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+                    payload.fecha_inicio = cuadranteData.inicio_semana;
+                    payload.fecha_fin = cuadranteData.fin_semana;
+                } else {
+                    payload.fecha = formatDateIso(fechaActual || new Date());
+                }
+            }
+
+            const res = await fetch("/api/admin/notificaciones/enviar-email-medicamentos", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || "Error en el servidor al enviar correo.");
+            }
+
+            const data = await res.json();
+            if (fb) {
+                fb.classList.remove("hidden");
+                if (data.enviados > 0) {
+                    fb.className = "p-3 rounded-xl text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200";
+                    fb.innerHTML = `<strong>¡Correo enviado exitosamente!</strong> Se enviaron ${data.enviados} correo(s) con la pauta de medicamentos.`;
+                } else {
+                    fb.className = "p-3 rounded-xl text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200";
+                    const detalleErr = data.detalles && data.detalles[0] ? `: ${data.detalles[0].detalle}` : "";
+                    fb.innerHTML = `<strong>Atención:</strong> No se pudo enviar el correo${detalleErr}`;
+                }
+            }
+        } catch (err) {
+            console.error("Error al enviar email de medicamentos:", err);
+            if (fb) {
+                fb.classList.remove("hidden");
+                fb.className = "p-3 rounded-xl text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200";
+                fb.innerHTML = `<strong>Error:</strong> ${err.message || "No se pudo enviar el correo."}`;
+            }
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}

@@ -630,3 +630,77 @@ def test_formato_agrupado_ejemplo_usuario(db_session):
 
     msg_wa_diario_lun = build_whatsapp_message(cuid, asigs_semana[0], [], tomas_lunes)
     assert "*Amlodipino*: Lunes a las 16:00 y 23:59 hrs" in msg_wa_diario_lun
+
+
+def test_construir_y_enviar_solo_medicamentos(db_session):
+    """
+    Verifica que la notificación exclusiva de pauta de medicamentos:
+    1. Incluya la lista completa de medicamentos agrupada en el formato exacto requerido.
+    2. NO contenga turnos de cuidadores ni actividades médicas.
+    3. Funcione correctamente tanto para cuidadores individuales como para envío manual.
+    """
+    from unittest.mock import patch
+    from app.email_service import (
+        construir_contenido_solo_medicamentos,
+        enviar_correos_solo_medicamentos_periodo,
+    )
+
+    lunes = date(2026, 10, 26)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=200,
+        personal_medico_id=1,
+        nombre_medicamento="Amlodipino",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    h1 = MedicamentoHorario(medicamento_id=200, dia=lunes, hora=time(16, 0))
+    h2 = MedicamentoHorario(medicamento_id=200, dia=lunes, hora=time(23, 59))
+    db_session.add_all([h1, h2])
+    db_session.commit()
+
+    tomas = obtener_medicamentos_programados(db_session, lunes, domingo)
+
+    # 1. Probar construcción de contenido
+    asunto, texto, html = construir_contenido_solo_medicamentos(tomas, "Semana de Prueba", "Claudia")
+    assert "Amlodipino: de Lunes a Domingo a las 16:00 y 23:59 hrs" in texto
+    assert "Indicado por: Dr. Carlos Gómez" in texto
+    # Garantizar que NO incluya turnos ni actividades
+    assert "Tu turno para el día" not in texto
+    assert "actividades médicas programadas" not in texto
+    assert "bloque" not in texto.lower()
+
+    # 2. Probar envío vía Resend con mock
+    with patch("app.email_service.enviar_email_via_resend") as mock_resend:
+        mock_resend.return_value = {"status": "success", "id": "email_meds_test_1"}
+
+        # Envío manual
+        res_manual = enviar_correos_solo_medicamentos_periodo(
+            db=db_session,
+            fecha_inicio=lunes,
+            fecha_fin=domingo,
+            destinatario_tipo="manual",
+            email_manual="familiar@test.com"
+        )
+        assert res_manual["enviados"] == 1
+        assert mock_resend.called
+        assert mock_resend.call_args[0][0] == "familiar@test.com"
+        assert "Amlodipino" in mock_resend.call_args[0][2]
+
+        mock_resend.reset_mock()
+
+        # Envío a cuidador específico
+        cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first()
+        res_cuid = enviar_correos_solo_medicamentos_periodo(
+            db=db_session,
+            fecha_inicio=lunes,
+            fecha_fin=domingo,
+            destinatario_tipo="cuidador",
+            id_cuidador=cuid.id_cuidador
+        )
+        assert res_cuid["enviados"] == 1
+        assert mock_resend.called
+        assert mock_resend.call_args[0][0] == cuid.mail

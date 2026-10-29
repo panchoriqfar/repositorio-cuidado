@@ -4861,7 +4861,7 @@ function generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia) {
         msg += `  No hay administración de medicamentos programada para este periodo.\n`;
     }
 
-    msg += `\n_Cada cuidador recibe exclusivamente la información de sus propios turnos asignados._`;
+    msg += `\n_Por favor confirma la recepción de este resumen. ¡Buen turno!._`;
     return msg;
 }
 

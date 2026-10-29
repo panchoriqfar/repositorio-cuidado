@@ -822,6 +822,31 @@ def enviar_email_actividades(
     )
 
 
+@app.post("/api/admin/notificaciones/enviar-email-horario", response_model=schemas.NotificacionEmailResponse)
+def enviar_email_horario(
+    payload: schemas.NotificacionEmailHorarioRequest,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Envía por correo electrónico la planificación de horarios y turnos
+    (con actividades y pauta de medicamentos asignada a cada cuidador).
+    Permite seleccionar entre semana completa o día específico, y enviar a todos
+    los cuidadores con turnos o a uno en particular.
+    """
+    tipo = payload.tipo or "semana"
+    fecha = payload.fecha or date.today()
+
+    return email_service.enviar_correos_horario_periodo(
+        db=db,
+        fecha_base=fecha,
+        tipo=tipo,
+        destinatario_tipo=payload.destinatario_tipo or "todos",
+        id_cuidador=payload.id_cuidador,
+        email_manual=payload.destinatario_email
+    )
+
+
 @app.post("/api/admin/notificaciones/enviar-email-prueba")
 def enviar_email_prueba(
     payload: schemas.EnvioEmailPruebaRequest,

@@ -218,6 +218,15 @@ class NotificacionEmailActividadesRequest(BaseModel):
     id_cuidador: Optional[int] = None
     destinatario_email: Optional[str] = None
 
+class NotificacionEmailHorarioRequest(BaseModel):
+    tipo: str = "semana"  # 'dia' o 'semana'
+    fecha: Optional[date] = None
+    fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
+    destinatario_tipo: str = "todos"  # 'todos', 'cuidador', 'manual'
+    id_cuidador: Optional[int] = None
+    destinatario_email: Optional[str] = None
+
 class DetalleEnvioEmail(BaseModel):
     id_cuidador: int
     cuidador: str

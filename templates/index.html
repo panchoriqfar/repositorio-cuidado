@@ -108,14 +108,7 @@
                             <i class="fa-solid fa-pills text-rose-500"></i>
                             <span>Medicamentos</span>
                         </button>
-                        <button onclick="openModalWhatsAppIndividual()" class="px-2.5 lg:px-3 py-1.5 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Enviar Resumen Individual por WhatsApp">
-                            <i class="fa-brands fa-whatsapp text-sm"></i>
-                            <span>WhatsApp</span>
-                        </button>
-                        <button onclick="openNotificacionEmailModal()" id="btnCorreoDiario" class="px-2.5 lg:px-3 py-1.5 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Enviar Correo Diario a cuidadores en turno">
-                            <i class="fa-solid fa-envelope text-sm"></i>
-                            <span>Enviar Correo Diario</span>
-                        </button>
+
                         <button onclick="openCambiarPasswordModal(false)" class="px-2.5 lg:px-3 py-1.5 text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-xs flex-shrink-0 whitespace-nowrap" title="Cambiar Contraseña">
                             <i class="fa-solid fa-key text-amber-600"></i>
                             <span>Cambiar Contraseña</span>
@@ -218,7 +211,7 @@
             <div id="barraWhatsappSemanal" class="hidden border-t border-slate-100 bg-slate-50/90 px-4 py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                 <span class="text-xs text-slate-500 flex items-center justify-center sm:justify-start gap-1.5 text-center sm:text-left">
                     <i class="fa-brands fa-whatsapp text-emerald-600 text-sm flex-shrink-0"></i>
-                    <span>Horario semanal terminado: descarga la imagen o envía notificaciones</span>
+                    <span> descarga la imagen o envía notificaciones</span>
                 </span>
                 <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <button onclick="abrirModalGenerarImagen()" id="btnGenerarImagenSemanal"
@@ -227,16 +220,17 @@
                         <i class="fa-solid fa-file-image text-sm"></i>
                         <span>Generar Imagen Semanal</span>
                     </button>
-                    <button onclick="openModalWhatsAppIndividual('semana')" id="btnWhatsAppSemanal"
-                        class="w-full sm:w-auto px-4 py-2.5 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                    <button onclick="openModalNotifHorario('whatsapp')" id="btnWhatsAppSemanal"
+                        class="w-full sm:w-auto px-4 py-2.5 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                        title="Enviar horarios y planificación por WhatsApp">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
-                        <span>Enviar por WhatsApp</span>
+                        <span>WhatsApp</span>
                     </button>
-                    <button onclick="ejecutarEnvioCorreoSemanal()" id="btnCorreoSemanal"
+                    <button onclick="openModalNotifHorario('email')" id="btnCorreoSemanal"
                         class="w-full sm:w-auto px-4 py-2.5 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
-                        title="Enviar planificación semanal por correo electrónico">
+                        title="Enviar horario y planificación por correo electrónico">
                         <i class="fa-solid fa-envelope text-sm"></i>
-                        <span>Enviar Correo Semanal</span>
+                        <span>Correo</span>
                     </button>
                 </div>
             </div>
@@ -334,6 +328,120 @@
     </footer>
 
     <!-- ==================== MODALES ==================== -->
+    <!-- MODAL: NOTIFICACIÓN DE HORARIO Y PLANIFICACIÓN (WHATSAPP Y CORREO) -->
+    <div id="modalNotifHorario" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp my-auto max-h-[92vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-3">
+                    <div id="notifHorarioHeaderIcon" class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg flex-shrink-0">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base sm:text-lg leading-tight">Enviar Horario y Planificación</h3>
+                        <p class="text-xs text-slate-500">Envío de turnos, actividades y medicamentos asignados (a cada quien lo suyo)</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeModalNotifHorario()" class="text-slate-400 hover:text-slate-600 text-xl p-1 leading-none rounded-lg hover:bg-slate-100 transition-colors">&times;</button>
+            </div>
+
+            <!-- Selector de Canal (Pestañas WhatsApp / Correo) -->
+            <div class="flex border-b border-slate-200 text-xs font-bold">
+                <button type="button" id="tabNotifHorarioWA" onclick="cambiarCanalNotifHorario('whatsapp')" class="py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors">
+                    <i class="fa-brands fa-whatsapp text-sm text-[#25D366]"></i>
+                    <span>WhatsApp</span>
+                </button>
+                <button type="button" id="tabNotifHorarioMail" onclick="cambiarCanalNotifHorario('email')" class="py-2.5 px-4 border-b-2 border-sky-600 text-sky-600 flex items-center gap-1.5 transition-colors">
+                    <i class="fa-solid fa-envelope text-sm text-sky-600"></i>
+                    <span>Correo Electrónico</span>
+                </button>
+            </div>
+
+            <div class="space-y-3.5 overflow-y-auto flex-1 pr-1 text-xs">
+                <!-- Selector de Periodo -->
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Periodo a Enviar:</label>
+                    <select id="notifHorarioPeriodo" onchange="actualizarVistaPreviaNotifHorario()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium">
+                        <option value="semana">Semana Actual Completa (Consolidada)</option>
+                        <option value="dia">Día Específico</option>
+                    </select>
+                </div>
+
+                <!-- Selector de Día (Visible solo si periodo === 'dia') -->
+                <div id="notifHorarioContainerDia" class="hidden">
+                    <label class="block font-semibold text-slate-700 mb-1">Seleccionar Día:</label>
+                    <select id="notifHorarioDiaSelect" onchange="actualizarVistaPreviaNotifHorario()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    </select>
+                </div>
+
+                <!-- DESTINATARIO: SECCIÓN WHATSAPP -->
+                <div id="seccionDestinatarioHorarioWA" class="hidden space-y-2">
+                    <label class="block font-semibold text-slate-700">Destinatario WhatsApp:</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <select id="notifHorarioCuidadorWA" onchange="onCambioCuidadorNotifHorarioWA()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="">-- Seleccionar Integrante --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <input type="text" id="notifHorarioTelManual" placeholder="O ingresar tel: +569XXXXXXXX" oninput="actualizarVistaPreviaNotifHorario()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DESTINATARIO: SECCIÓN CORREO -->
+                <div id="seccionDestinatarioHorarioMail" class="space-y-2">
+                    <label class="block font-semibold text-slate-700">Destinatario Correo:</label>
+                    <div class="space-y-2">
+                        <select id="notifHorarioDestTipoMail" onchange="onCambioTipoDestMailHorario()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                            <option value="todos">A todos los cuidadores con turnos asignados (a cada quien lo suyo)</option>
+                            <option value="cuidador">A un cuidador específico</option>
+                            <option value="manual">Ingresar correo manualmente</option>
+                        </select>
+
+                        <div id="notifHorarioMailCuidadorContainer" class="hidden">
+                            <select id="notifHorarioCuidadorMail" onchange="actualizarVistaPreviaNotifHorario()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                                <option value="">-- Seleccionar Cuidador --</option>
+                            </select>
+                        </div>
+
+                        <div id="notifHorarioMailManualContainer" class="hidden">
+                            <input type="email" id="notifHorarioEmailManual" placeholder="ejemplo@correo.com" oninput="actualizarVistaPreviaNotifHorario()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VISTA PREVIA DEL MENSAJE -->
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="font-semibold text-slate-700">Vista Previa / Resumen a Enviar:</label>
+                        <button type="button" onclick="copiarTextoNotifHorario()" class="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium transition-colors">
+                            <i class="fa-regular fa-copy"></i>
+                            <span id="btnCopiarTextoHorarioLbl">Copiar</span>
+                        </button>
+                    </div>
+                    <div id="notifHorarioVistaPrevia" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 font-mono text-[11px] whitespace-pre-wrap max-h-44 overflow-y-auto select-all leading-relaxed">
+                        Cargando vista previa...
+                    </div>
+                </div>
+
+                <!-- MENSAJE DE ESTADO / FEEDBACK -->
+                <div id="notifHorarioFeedback" class="hidden p-3 rounded-xl text-xs font-medium"></div>
+            </div>
+
+            <!-- Footer / Botones de Acción -->
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onclick="closeModalNotifHorario()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors">
+                    Cancelar
+                </button>
+                <button type="button" id="btnEjecutarEnvioNotifHorario" onclick="ejecutarEnvioNotifHorario()" class="px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700">
+                    <i class="fa-solid fa-paper-plane text-sm"></i>
+                    <span>Enviar Correo</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: NOTIFICACIÓN EXCLUSIVA DE ACTIVIDADES MÉDICAS (WHATSAPP Y CORREO) -->
     <div id="modalNotifActividades" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
         <div class="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp my-auto max-h-[92vh] flex flex-col">
@@ -1372,6 +1480,6 @@
     </div>
 
     <!-- SCRIPT PRINCIPAL CON CACHE-BUSTING -->
-    <script src="/static/js/app.js?v=17.0"></script>
+    <script src="/static/js/app.js?v=18.0"></script>
 </body>
 </html>

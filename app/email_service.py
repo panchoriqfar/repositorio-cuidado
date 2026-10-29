@@ -1122,3 +1122,275 @@ def enviar_correos_solo_actividades_periodo(
             })
 
     return resultado
+
+
+
+# ---------------------------------------------------------------------------
+# Notificaciones unificadas de Horarios y Turnos (Día o Semana, Todos o Individual)
+# ---------------------------------------------------------------------------
+
+def enviar_correos_horario_periodo(
+    db: Session,
+    fecha_base: date,
+    tipo: str = "semana",
+    destinatario_tipo: str = "todos",
+    id_cuidador: Optional[int] = None,
+    email_manual: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Envía la planificación de horarios y turnos por correo electrónico vía Resend,
+    con las actividades médicas y medicamentos asignados a cada cuidador según corresponda.
+    Permite seleccionar entre semana completa o día específico, y enviar a todos
+    los cuidadores con turnos o a uno en particular.
+    """
+    if tipo == "dia":
+        fecha_objetivo = fecha_base
+        dia_nom = DIAS_ESPANOL.get(fecha_objetivo.weekday(), "")
+        titulo_periodo = f"{dia_nom} {fecha_objetivo.strftime('%d/%m/%Y')}"
+        dia_siguiente = fecha_objetivo + timedelta(days=1)
+
+        q = (
+            db.query(AsignacionTurno)
+            .join(Cuidador)
+            .outerjoin(BloqueTurno)
+            .filter(AsignacionTurno.fecha == fecha_objetivo, Cuidador.activo == True)
+        )
+        if destinatario_tipo == "cuidador" and id_cuidador:
+            q = q.filter(AsignacionTurno.id_cuidador == id_cuidador)
+
+        asignaciones: List[AsignacionTurno] = q.order_by(AsignacionTurno.hora_inicio.asc()).all()
+
+        actividades_dia: List[ActividadMedica] = (
+            db.query(ActividadMedica)
+            .filter(ActividadMedica.fecha.in_([fecha_objetivo, dia_siguiente]))
+            .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
+            .all()
+        )
+
+        inicio_sem = fecha_objetivo - timedelta(days=fecha_objetivo.weekday())
+        fin_sem = inicio_sem + timedelta(days=6)
+        medicamentos_dia: List[TomaMedicamento] = obtener_medicamentos_programados(
+            db=db,
+            fecha_inicio=inicio_sem,
+            fecha_fin=fin_sem
+        )
+
+        asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
+        for asig in asignaciones:
+            asigs_por_cuidador.setdefault(asig.id_cuidador, []).append(asig)
+
+        # Caso cuidador específico sin turnos hoy
+        if destinatario_tipo == "cuidador" and id_cuidador and id_cuidador not in asigs_por_cuidador:
+            cuid = db.query(Cuidador).filter_by(id_cuidador=id_cuidador).first()
+            nombre_cuid = format_nombre_cuidador(cuid) if cuid else "Cuidador"
+            return {
+                "tipo": "diario",
+                "periodo": titulo_periodo,
+                "total_cuidadores": 1,
+                "enviados": 0,
+                "omitidos": 1,
+                "errores": 0,
+                "detalles": [{
+                    "id_cuidador": id_cuidador,
+                    "cuidador": nombre_cuid,
+                    "mail": cuid.mail if cuid else None,
+                    "estado": "OMITIDO",
+                    "detalle": f"{nombre_cuid} no tiene turnos asignados para el día {titulo_periodo}."
+                }]
+            }
+
+        resultado: Dict[str, Any] = {
+            "tipo": "diario",
+            "periodo": titulo_periodo,
+            "total_cuidadores": len(asigs_por_cuidador),
+            "enviados": 0,
+            "omitidos": 0,
+            "errores": 0,
+            "detalles": []
+        }
+
+        if not asigs_por_cuidador:
+            return resultado
+
+        for cid, lista in asigs_por_cuidador.items():
+            lista_ordenada = sorted(lista, key=lambda a: a.hora_inicio)
+            cuid = lista_ordenada[0].cuidador
+            nombre = format_nombre_cuidador(cuid)
+            destino_mail = email_manual.strip() if (destinatario_tipo == "manual" and email_manual) else (cuid.mail or "").strip()
+
+            if not es_email_valido(destino_mail):
+                resultado["omitidos"] += 1
+                resultado["detalles"].append({
+                    "id_cuidador": cuid.id_cuidador,
+                    "cuidador": nombre,
+                    "mail": destino_mail or None,
+                    "estado": "OMITIDO",
+                    "detalle": "El cuidador no tiene correo configurado o el formato es inválido."
+                })
+                continue
+
+            acts_turno = [
+                act for act in actividades_dia
+                if any(esta_en_jornada_asig(act.fecha, act.hora, a) for a in lista_ordenada)
+            ]
+            meds_turno = medicamentos_dia
+
+            try:
+                subject, text, html = construir_contenido_diario(cuid, lista_ordenada, acts_turno, meds_turno)
+                resend_resp = enviar_email_via_resend(destino_mail, subject, text, html)
+                if isinstance(resend_resp, dict) and resend_resp.get("status") == "error":
+                    raise RuntimeError(resend_resp.get("error") or "Error enviando correo vía Resend API")
+
+                resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
+                resultado["enviados"] += 1
+                resultado["detalles"].append({
+                    "id_cuidador": cuid.id_cuidador,
+                    "cuidador": nombre,
+                    "mail": destino_mail,
+                    "estado": "ENVIADO",
+                    "detalle": f"Correo diario entregado exitosamente vía Resend API (ID: {resp_id})" if resp_id else "Correo diario entregado exitosamente vía Resend API"
+                })
+            except Exception as exc:
+                logger.error(f"Error enviando correo diario a {destino_mail}: {exc}")
+                resultado["errores"] += 1
+                resultado["detalles"].append({
+                    "id_cuidador": cuid.id_cuidador,
+                    "cuidador": nombre,
+                    "mail": destino_mail,
+                    "estado": "ERROR",
+                    "detalle": str(exc)
+                })
+
+        return resultado
+
+    else:
+        # tipo == "semana"
+        inicio_semana = fecha_base - timedelta(days=fecha_base.weekday())
+        fin_semana = inicio_semana + timedelta(days=6)
+        dia_extra = fin_semana + timedelta(days=1)
+        titulo_periodo = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
+
+        q = (
+            db.query(AsignacionTurno)
+            .join(Cuidador)
+            .outerjoin(BloqueTurno)
+            .filter(
+                AsignacionTurno.fecha >= inicio_semana,
+                AsignacionTurno.fecha <= fin_semana,
+                Cuidador.activo == True
+            )
+        )
+        if destinatario_tipo == "cuidador" and id_cuidador:
+            q = q.filter(AsignacionTurno.id_cuidador == id_cuidador)
+
+        asignaciones = q.order_by(AsignacionTurno.fecha.asc(), AsignacionTurno.hora_inicio.asc()).all()
+
+        actividades = (
+            db.query(ActividadMedica)
+            .filter(
+                ActividadMedica.fecha >= inicio_semana,
+                ActividadMedica.fecha <= dia_extra
+            )
+            .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
+            .all()
+        )
+        actividades_por_fecha: Dict[date, List[ActividadMedica]] = {}
+        for act in actividades:
+            actividades_por_fecha.setdefault(act.fecha, []).append(act)
+
+        medicamentos = obtener_medicamentos_programados(
+            db=db,
+            fecha_inicio=inicio_semana,
+            fecha_fin=dia_extra
+        )
+        medicamentos_por_fecha: Dict[date, List[TomaMedicamento]] = {}
+        for m in medicamentos:
+            medicamentos_por_fecha.setdefault(m.dia, []).append(m)
+
+        asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
+        for asig in asignaciones:
+            asigs_por_cuidador.setdefault(asig.id_cuidador, []).append(asig)
+
+        # Caso cuidador específico sin turnos en la semana
+        if destinatario_tipo == "cuidador" and id_cuidador and id_cuidador not in asigs_por_cuidador:
+            cuid = db.query(Cuidador).filter_by(id_cuidador=id_cuidador).first()
+            nombre_cuid = format_nombre_cuidador(cuid) if cuid else "Cuidador"
+            return {
+                "tipo": "semanal",
+                "periodo": titulo_periodo,
+                "total_cuidadores": 1,
+                "enviados": 0,
+                "omitidos": 1,
+                "errores": 0,
+                "detalles": [{
+                    "id_cuidador": id_cuidador,
+                    "cuidador": nombre_cuid,
+                    "mail": cuid.mail if cuid else None,
+                    "estado": "OMITIDO",
+                    "detalle": f"{nombre_cuid} no tiene turnos asignados para la semana ({titulo_periodo})."
+                }]
+            }
+
+        resultado = {
+            "tipo": "semanal",
+            "periodo": titulo_periodo,
+            "total_cuidadores": len(asigs_por_cuidador),
+            "enviados": 0,
+            "omitidos": 0,
+            "errores": 0,
+            "detalles": []
+        }
+
+        if not asigs_por_cuidador:
+            return resultado
+
+        for cid, lista in asigs_por_cuidador.items():
+            cuid = lista[0].cuidador
+            nombre = format_nombre_cuidador(cuid)
+            destino_mail = email_manual.strip() if (destinatario_tipo == "manual" and email_manual) else (cuid.mail or "").strip()
+
+            if not es_email_valido(destino_mail):
+                resultado["omitidos"] += 1
+                resultado["detalles"].append({
+                    "id_cuidador": cuid.id_cuidador,
+                    "cuidador": nombre,
+                    "mail": destino_mail or None,
+                    "estado": "OMITIDO",
+                    "detalle": "El cuidador no tiene correo configurado o el formato es inválido."
+                })
+                continue
+
+            try:
+                subject, text, html = construir_contenido_semanal(
+                    cuidador=cuid,
+                    asignaciones=lista,
+                    actividades_por_fecha=actividades_por_fecha,
+                    inicio_semana=inicio_semana,
+                    fin_semana=fin_semana,
+                    medicamentos_por_fecha=medicamentos_por_fecha
+                )
+                resend_resp = enviar_email_via_resend(destino_mail, subject, text, html)
+                if isinstance(resend_resp, dict) and resend_resp.get("status") == "error":
+                    raise RuntimeError(resend_resp.get("error") or "Error enviando correo vía Resend API")
+
+                resp_id = getattr(resend_resp, "id", None) or (resend_resp.get("id") if isinstance(resend_resp, dict) else "")
+                resultado["enviados"] += 1
+                resultado["detalles"].append({
+                    "id_cuidador": cuid.id_cuidador,
+                    "cuidador": nombre,
+                    "mail": destino_mail,
+                    "estado": "ENVIADO",
+                    "detalle": f"Planificación semanal enviada vía Resend API ({len(lista)} turnos)"
+                })
+            except Exception as exc:
+                logger.error(f"Error enviando correo semanal a {destino_mail}: {exc}")
+                resultado["errores"] += 1
+                resultado["detalles"].append({
+                    "id_cuidador": cuid.id_cuidador,
+                    "cuidador": nombre,
+                    "mail": destino_mail,
+                    "estado": "ERROR",
+                    "detalle": str(exc)
+                })
+
+        return resultado

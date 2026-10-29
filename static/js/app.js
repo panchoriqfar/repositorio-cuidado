@@ -4580,3 +4580,462 @@ async function ejecutarEnvioNotifActividades() {
         }
     }
 }
+
+
+// ==============================================================================
+// --- NOTIFICACIONES DE HORARIOS Y PLANIFICACIÓN (WHATSAPP Y CORREO) ---
+// ==============================================================================
+
+let canalNotifHorarioActivo = 'email';
+
+async function openModalNotifHorario(canal = 'email') {
+    canalNotifHorarioActivo = canal;
+    const modal = document.getElementById("modalNotifHorario");
+    if (!modal) return;
+
+    // Asegurar que cuidadores y cuadrante estén disponibles
+    if (!listaCuidadoresCache || listaCuidadoresCache.length === 0) {
+        try {
+            const resC = await fetch("/api/admin/cuidadores");
+            if (resC.ok) listaCuidadoresCache = await resC.json();
+        } catch (e) {
+            console.error("Error al cargar lista de cuidadores:", e);
+        }
+    }
+
+    if (!cuadranteData) {
+        await cargarCuadrante();
+    }
+
+    // Poblar días disponibles desde cuadranteData
+    const diaSelect = document.getElementById("notifHorarioDiaSelect");
+    if (diaSelect) {
+        if (cuadranteData && Array.isArray(cuadranteData.dias) && cuadranteData.dias.length > 0) {
+            diaSelect.innerHTML = cuadranteData.dias.map(d => 
+                `<option value="${d.fecha}">${d.nombre} (${formatFechaIsoVisual(d.fecha)})</option>`
+            ).join("");
+        } else {
+            const hoy = new Date();
+            const diaSem = (hoy.getDay() + 6) % 7;
+            const lunes = new Date(hoy);
+            lunes.setDate(hoy.getDate() - diaSem);
+            let opts = "";
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(lunes);
+                d.setDate(lunes.getDate() + i);
+                const iso = formatDateIso(d);
+                opts += `<option value="${iso}">${DIAS_SEMANA_ORDEN_JS[i]} (${formatFechaIsoVisual(iso)})</option>`;
+            }
+            diaSelect.innerHTML = opts;
+        }
+    }
+
+    // Poblar select de cuidadores WhatsApp
+    const cuidadorWA = document.getElementById("notifHorarioCuidadorWA");
+    if (cuidadorWA && Array.isArray(listaCuidadoresCache)) {
+        cuidadorWA.innerHTML = `<option value="">-- Seleccionar Integrante --</option>` + 
+            listaCuidadoresCache.map(c => {
+                const tel = c.telefono_whatsapp ? ` (${c.telefono_whatsapp})` : " (Sin WA)";
+                return `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido || ''}${tel}</option>`;
+            }).join("");
+    }
+
+    // Poblar select de cuidadores Correo
+    const cuidadorMail = document.getElementById("notifHorarioCuidadorMail");
+    if (cuidadorMail && Array.isArray(listaCuidadoresCache)) {
+        cuidadorMail.innerHTML = `<option value="">-- Seleccionar Cuidador --</option>` + 
+            listaCuidadoresCache.map(c => {
+                const mail = c.mail ? ` (${c.mail})` : " (Sin email)";
+                return `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido || ''}${mail}</option>`;
+            }).join("");
+    }
+
+    // Limpiar mensaje feedback
+    const fb = document.getElementById("notifHorarioFeedback");
+    if (fb) {
+        fb.classList.add("hidden");
+        fb.className = "hidden p-3 rounded-xl text-xs font-medium";
+        fb.innerHTML = "";
+    }
+
+    cambiarCanalNotifHorario(canal);
+    actualizarVistaPreviaNotifHorario();
+
+    modal.classList.remove("hidden");
+}
+
+function closeModalNotifHorario() {
+    const modal = document.getElementById("modalNotifHorario");
+    if (modal) modal.classList.add("hidden");
+}
+
+function cambiarCanalNotifHorario(canal) {
+    canalNotifHorarioActivo = canal;
+    const tabWA = document.getElementById("tabNotifHorarioWA");
+    const tabMail = document.getElementById("tabNotifHorarioMail");
+    const secWA = document.getElementById("seccionDestinatarioHorarioWA");
+    const secMail = document.getElementById("seccionDestinatarioHorarioMail");
+    const btnEjecutar = document.getElementById("btnEjecutarEnvioNotifHorario");
+    const iconHeader = document.getElementById("notifHorarioHeaderIcon");
+
+    if (canal === 'whatsapp') {
+        tabWA.className = "py-2.5 px-4 border-b-2 border-[#25D366] text-[#128C7E] flex items-center gap-1.5 transition-colors font-bold";
+        tabMail.className = "py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors";
+        secWA.classList.remove("hidden");
+        secMail.classList.add("hidden");
+        btnEjecutar.className = "px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-[#25D366] hover:bg-[#20ba5a]";
+        btnEjecutar.innerHTML = `<i class="fa-brands fa-whatsapp text-sm"></i><span>Abrir en WhatsApp</span>`;
+        if (iconHeader) iconHeader.className = "w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg flex-shrink-0";
+    } else {
+        tabMail.className = "py-2.5 px-4 border-b-2 border-sky-600 text-sky-600 flex items-center gap-1.5 transition-colors font-bold";
+        tabWA.className = "py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors";
+        secMail.classList.remove("hidden");
+        secWA.classList.add("hidden");
+        btnEjecutar.className = "px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700";
+        btnEjecutar.innerHTML = `<i class="fa-solid fa-paper-plane text-sm"></i><span>Enviar Correo</span>`;
+        if (iconHeader) iconHeader.className = "w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg flex-shrink-0";
+    }
+
+    actualizarVistaPreviaNotifHorario();
+}
+
+function onCambioCuidadorNotifHorarioWA() {
+    const sel = document.getElementById("notifHorarioCuidadorWA");
+    const inputTel = document.getElementById("notifHorarioTelManual");
+    if (sel && sel.value && inputTel) {
+        const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(sel.value));
+        if (cuid && cuid.telefono_whatsapp) {
+            inputTel.value = cuid.telefono_whatsapp;
+        }
+    }
+    actualizarVistaPreviaNotifHorario();
+}
+
+function onCambioTipoDestMailHorario() {
+    const sel = document.getElementById("notifHorarioDestTipoMail");
+    const contCuid = document.getElementById("notifHorarioMailCuidadorContainer");
+    const contManual = document.getElementById("notifHorarioMailManualContainer");
+    const tipo = sel ? sel.value : "todos";
+
+    if (tipo === "cuidador") {
+        contCuid.classList.remove("hidden");
+        contManual.classList.add("hidden");
+    } else if (tipo === "manual") {
+        contCuid.classList.remove("hidden");
+        contManual.classList.remove("hidden");
+    } else {
+        contCuid.classList.add("hidden");
+        contManual.classList.add("hidden");
+    }
+    actualizarVistaPreviaNotifHorario();
+}
+
+function generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia) {
+    if (!cuid || !cuadranteData) return "";
+    const nombreCompleto = `${cuid.nombre} ${cuid.apellido || ''}`.trim();
+
+    let diasTarget = [];
+    let periodoTexto = "";
+    if (periodo === "dia") {
+        const fechaElegida = fechaDia || formatDateIso(fechaActual || new Date());
+        const diaObj = (cuadranteData.dias || []).find(d => d.fecha === fechaElegida) || { fecha: fechaElegida, nombre: "" };
+        diasTarget = [diaObj];
+        periodoTexto = `${diaObj.nombre} ${formatFechaIsoVisual(diaObj.fecha)}`;
+    } else {
+        diasTarget = cuadranteData.dias || [];
+        if (cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+            periodoTexto = `Semana del ${formatFechaIsoVisual(cuadranteData.inicio_semana)} al ${formatFechaIsoVisual(cuadranteData.fin_semana)}`;
+        } else {
+            periodoTexto = "Semana Actual";
+        }
+    }
+
+    const turnosEncontrados = [];
+    const diasConTurnoFechas = new Set();
+    const jornadasCuidadorPorDia = {};
+
+    (cuadranteData.bloques || []).forEach(bloque => {
+        diasTarget.forEach(d => {
+            const asigs = cuadranteData.matriz?.[bloque.id_bloque]?.[d.fecha];
+            if (asigs) {
+                const lista = Array.isArray(asigs) ? asigs : [asigs];
+                lista.forEach(a => {
+                    if (String(a.id_cuidador) === String(cuid.id_cuidador)) {
+                        turnosEncontrados.push({
+                            diaFecha: d.fecha,
+                            diaNombre: d.nombre,
+                            bloque: bloque.nombre_bloque || bloque.codigo_bloque,
+                            horario_texto: `${bloque.hora_inicio.slice(0, 5)} a ${bloque.hora_fin.slice(0, 5)}`,
+                            hora_inicio: bloque.hora_inicio,
+                            hora_fin: bloque.hora_fin,
+                            reunion_familiar: !!a.reunion_familiar
+                        });
+                        diasConTurnoFechas.add(d.fecha);
+                        if (!jornadasCuidadorPorDia[d.fecha]) jornadasCuidadorPorDia[d.fecha] = [];
+                        jornadasCuidadorPorDia[d.fecha].push({
+                            inicio: bloque.hora_inicio.slice(0, 5),
+                            fin: bloque.hora_fin.slice(0, 5)
+                        });
+                    }
+                });
+            }
+        });
+    });
+
+    if (turnosEncontrados.length === 0) {
+        return `ℹ️ ${nombreCompleto} no tiene turnos asignados para ${periodoTexto}.`;
+    }
+
+    turnosEncontrados.sort((a, b) => a.diaFecha.localeCompare(b.diaFecha) || a.hora_inicio.localeCompare(b.hora_inicio));
+
+    let msg = `🏥 *PLANIFICACIÓN DE TURNOS Y HORARIOS*\n`;
+    msg += `👤 *Cuidador(a):* ${nombreCompleto}\n`;
+    msg += `🗓️ *Periodo:* ${periodoTexto}\n\n`;
+
+    msg += `📋 *TURNOS ASIGNADOS:*\n`;
+    turnosEncontrados.forEach((t, i) => {
+        const rf = t.reunion_familiar ? " *[REUNIÓN FAMILIAR]*" : "";
+        msg += `  ${i + 1}. *${t.diaNombre} ${formatFechaIsoVisual(t.diaFecha)}*: Bloque *${t.bloque}* (${t.horario_texto} hrs)${rf}\n`;
+    });
+
+    // Actividades médicas asociadas
+    const actividadesTurno = [];
+    (listaActividadesCache || []).forEach(act => {
+        if (diasConTurnoFechas.has(act.fecha)) {
+            const hAct = (act.hora || "").slice(0, 5);
+            const jornadas = jornadasCuidadorPorDia[act.fecha] || [];
+            const coincide = jornadas.some(j => {
+                if (j.inicio <= j.fin) return hAct >= j.inicio && hAct <= j.fin;
+                return hAct >= j.inicio || hAct <= j.fin;
+            });
+            if (coincide) {
+                const nomMed = act.medico_asignado ? ` (A cargo: ${act.medico_asignado.nombre})` : "";
+                actividadesTurno.push(`  • *${act.titulo}* a las ${hAct} hrs${nomMed}`);
+            }
+        }
+    });
+
+    if (actividadesTurno.length > 0) {
+        msg += `\n🩺 *ACTIVIDADES MÉDICAS EN TURNO:*\n${actividadesTurno.join("\n")}\n`;
+    }
+
+    msg += `\n_Cada cuidador recibe exclusivamente la información de sus propios turnos asignados._`;
+    return msg;
+}
+
+function actualizarVistaPreviaNotifHorario() {
+    const selPeriodo = document.getElementById("notifHorarioPeriodo");
+    const periodo = selPeriodo ? selPeriodo.value : "semana";
+    const contDia = document.getElementById("notifHorarioContainerDia");
+    const selDia = document.getElementById("notifHorarioDiaSelect");
+
+    if (periodo === "dia") {
+        if (contDia) contDia.classList.remove("hidden");
+    } else {
+        if (contDia) contDia.classList.add("hidden");
+    }
+
+    let periodoTexto = "";
+    let fechaDia = "";
+    if (periodo === "dia") {
+        fechaDia = selDia ? selDia.value : formatDateIso(fechaActual || new Date());
+        const dObj = (cuadranteData?.dias || []).find(d => d.fecha === fechaDia);
+        const nom = dObj?.nombre || "";
+        periodoTexto = `${nom} ${formatFechaIsoVisual(fechaDia)}`;
+    } else {
+        if (cuadranteData && cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+            periodoTexto = `Semana del ${formatFechaIsoVisual(cuadranteData.inicio_semana)} al ${formatFechaIsoVisual(cuadranteData.fin_semana)}`;
+        } else {
+            periodoTexto = "Semana Actual";
+        }
+    }
+
+    const contPreview = document.getElementById("notifHorarioVistaPrevia");
+    if (!contPreview) return;
+
+    if (canalNotifHorarioActivo === 'whatsapp') {
+        const selWA = document.getElementById("notifHorarioCuidadorWA");
+        const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selWA?.value));
+        if (cuid) {
+            contPreview.textContent = generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia);
+        } else {
+            contPreview.textContent = `Selecciona a un integrante arriba para ver la vista previa de sus turnos y horarios asignados en el periodo: ${periodoTexto}.`;
+        }
+    } else {
+        const destTipo = document.getElementById("notifHorarioDestTipoMail")?.value || "todos";
+        if (destTipo === "cuidador" || destTipo === "manual") {
+            const selMail = document.getElementById("notifHorarioCuidadorMail");
+            const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selMail?.value));
+            if (cuid) {
+                const mailInfo = destTipo === "manual" ? `Destino manual: ${document.getElementById("notifHorarioEmailManual")?.value || 'por ingresar'}` : `Destino: ${cuid.mail || 'sin correo'}`;
+                contPreview.textContent = `[${mailInfo}]\n\n` + generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia);
+            } else {
+                contPreview.textContent = `Selecciona a un cuidador para previsualizar el correo que recibirá para ${periodoTexto}.`;
+            }
+        } else {
+            // "todos"
+            let msg = `📧 ENVÍO MASIVO DE PLANIFICACIÓN (${periodoTexto})\n`;
+            msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            msg += `Se enviará un correo individual a CADA cuidador que tenga turnos asignados en este período.\n`;
+            msg += `Cada mensaje contendrá estrictamente lo que le corresponde:\n`;
+            msg += `  • Sus días y horarios de turnos asignados\n`;
+            msg += `  • Las actividades médicas programadas en sus horarios\n`;
+            msg += `  • La pauta completa de medicamentos consolidada\n\n`;
+
+            if (cuadranteData && cuadranteData.bloques && cuadranteData.matriz) {
+                const cuidadoresConTurno = new Map();
+                const diasTarget = (periodo === "dia")
+                    ? [(cuadranteData.dias || []).find(d => d.fecha === fechaDia) || { fecha: fechaDia, nombre: "" }]
+                    : (cuadranteData.dias || []);
+
+                cuadranteData.bloques.forEach(bloque => {
+                    diasTarget.forEach(d => {
+                        const asigs = cuadranteData.matriz?.[bloque.id_bloque]?.[d.fecha];
+                        if (asigs) {
+                            const lista = Array.isArray(asigs) ? asigs : [asigs];
+                            lista.forEach(a => {
+                                const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(a.id_cuidador));
+                                const nom = cuid ? `${cuid.nombre} ${cuid.apellido || ''}`.trim() : `Cuidador ID ${a.id_cuidador}`;
+                                const cant = cuidadoresConTurno.get(nom) || 0;
+                                cuidadoresConTurno.set(nom, cant + 1);
+                            });
+                        }
+                    });
+                });
+
+                if (cuidadoresConTurno.size > 0) {
+                    msg += `👥 Cuidadores que recibirán su correo:\n`;
+                    cuidadoresConTurno.forEach((cant, nom) => {
+                        msg += `  • ${nom}: ${cant} turno(s) en este período\n`;
+                    });
+                } else {
+                    msg += `ℹ️ No hay turnos asignados registrados en este período.`;
+                }
+            }
+            contPreview.textContent = msg;
+        }
+    }
+}
+
+function copiarTextoNotifHorario() {
+    const contPreview = document.getElementById("notifHorarioVistaPrevia");
+    const texto = contPreview ? contPreview.textContent : "";
+    if (!texto) return;
+
+    navigator.clipboard.writeText(texto).then(() => {
+        const lbl = document.getElementById("btnCopiarTextoHorarioLbl");
+        if (lbl) {
+            const original = lbl.textContent;
+            lbl.textContent = "¡Copiado!";
+            setTimeout(() => { lbl.textContent = original; }, 2000);
+        }
+    }).catch(err => {
+        console.error("Error copiando texto:", err);
+    });
+}
+
+async function ejecutarEnvioNotifHorario() {
+    const fb = document.getElementById("notifHorarioFeedback");
+    if (fb) fb.classList.add("hidden");
+
+    const selPeriodo = document.getElementById("notifHorarioPeriodo");
+    const periodo = selPeriodo ? selPeriodo.value : "semana";
+    const fechaDia = document.getElementById("notifHorarioDiaSelect")?.value || formatDateIso(fechaActual || new Date());
+
+    if (canalNotifHorarioActivo === 'whatsapp') {
+        const selWA = document.getElementById("notifHorarioCuidadorWA");
+        const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selWA?.value));
+        const inputTel = document.getElementById("notifHorarioTelManual");
+        let rawTel = (inputTel ? inputTel.value : "").trim() || (cuid?.telefono_whatsapp || "").trim();
+
+        let telLimpio = rawTel.replace(/[^0-9]/g, "");
+        if (!telLimpio) {
+            alert("Por favor selecciona un integrante o ingresa un número de WhatsApp de destino.");
+            return;
+        }
+        if (telLimpio.length === 9 && telLimpio.startsWith("9")) {
+            telLimpio = "56" + telLimpio;
+        }
+
+        const msg = generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia);
+        if (!msg || msg.startsWith("ℹ️")) {
+            alert(msg || "No hay turnos asignados para este integrante en el período seleccionado.");
+            return;
+        }
+
+        const urlWA = `https://wa.me/${telLimpio}?text=${encodeURIComponent(msg)}`;
+        window.open(urlWA, "_blank");
+        closeModalNotifHorario();
+    } else {
+        const token = getToken();
+        if (!token) {
+            alert("Debes iniciar sesión para enviar notificaciones por correo.");
+            return;
+        }
+
+        const destTipo = document.getElementById("notifHorarioDestTipoMail")?.value || "todos";
+        const idCuidador = document.getElementById("notifHorarioCuidadorMail")?.value || null;
+        const mailManual = (document.getElementById("notifHorarioEmailManual")?.value || "").trim();
+
+        if (destTipo === "cuidador" && !idCuidador) {
+            alert("Por favor selecciona al cuidador de destino.");
+            return;
+        }
+        if (destTipo === "manual" && (!idCuidador || !mailManual)) {
+            alert("Por favor selecciona al cuidador e ingresa el correo electrónico manual de destino.");
+            return;
+        }
+
+        const btn = document.getElementById("btnEjecutarEnvioNotifHorario");
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-sm"></i><span>Enviando...</span>`;
+
+        try {
+            const payload = {
+                tipo: periodo,
+                destinatario_tipo: destTipo,
+                id_cuidador: idCuidador ? parseInt(idCuidador, 10) : null,
+                destinatario_email: mailManual || null,
+                fecha: (periodo === "dia") ? fechaDia : formatDateIso(fechaActual || new Date())
+            };
+
+            const res = await fetch("/api/admin/notificaciones/enviar-email-horario", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || "Error en el servidor al enviar correo.");
+            }
+
+            const data = await res.json();
+            if (fb) {
+                fb.classList.remove("hidden");
+                if (data.enviados > 0) {
+                    fb.className = "p-3 rounded-xl text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200";
+                    fb.innerHTML = `<strong>¡Correos enviados exitosamente!</strong> Se enviaron ${data.enviados} correo(s) a los cuidadores correspondientes.`;
+                } else {
+                    fb.className = "p-3 rounded-xl text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200";
+                    const detalleErr = data.detalles && data.detalles[0] ? `: ${data.detalles[0].detalle}` : "";
+                    fb.innerHTML = `<strong>Atención:</strong> No se enviaron correos${detalleErr}`;
+                }
+            }
+        } catch (err) {
+            console.error("Error al enviar email de horario:", err);
+            if (fb) {
+                fb.classList.remove("hidden");
+                fb.className = "p-3 rounded-xl text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200";
+                fb.innerHTML = `<strong>Error:</strong> ${err.message || "No se pudo enviar el correo."}`;
+            }
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}

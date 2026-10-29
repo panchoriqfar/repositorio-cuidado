@@ -4197,3 +4197,386 @@ async function ejecutarEnvioNotifMedicamentos() {
         }
     }
 }
+
+
+// ==============================================================================
+// --- NOTIFICACIONES EXCLUSIVAS DE ACTIVIDADES MÉDICAS (WHATSAPP Y CORREO) ---
+// ==============================================================================
+
+let canalNotifActActivo = 'whatsapp';
+
+async function openModalNotifActividades(canal = 'whatsapp') {
+    canalNotifActActivo = canal;
+    const modal = document.getElementById("modalNotifActividades");
+    if (!modal) return;
+
+    if (!listaActividadesCache || listaActividadesCache.length === 0) {
+        await cargarActividades();
+    }
+
+    // Poblar días disponibles desde cuadranteData
+    const diaSelect = document.getElementById("notifActDiaSelect");
+    if (diaSelect) {
+        if (cuadranteData && Array.isArray(cuadranteData.dias) && cuadranteData.dias.length > 0) {
+            diaSelect.innerHTML = cuadranteData.dias.map(d => 
+                `<option value="${d.fecha}">${d.nombre} (${formatFechaIsoVisual(d.fecha)})</option>`
+            ).join("");
+        } else {
+            const hoy = new Date();
+            const diaSem = (hoy.getDay() + 6) % 7;
+            const lunes = new Date(hoy);
+            lunes.setDate(hoy.getDate() - diaSem);
+            let opts = "";
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(lunes);
+                d.setDate(lunes.getDate() + i);
+                const iso = formatDateIso(d);
+                opts += `<option value="${iso}">${DIAS_SEMANA_ORDEN_JS[i]} (${formatFechaIsoVisual(iso)})</option>`;
+            }
+            diaSelect.innerHTML = opts;
+        }
+    }
+
+    // Poblar select de cuidadores WhatsApp
+    const cuidadorWA = document.getElementById("notifActCuidadorWA");
+    if (cuidadorWA && Array.isArray(listaCuidadoresCache)) {
+        cuidadorWA.innerHTML = `<option value="">-- Seleccionar Integrante --</option>` + 
+            listaCuidadoresCache.map(c => {
+                const tel = c.telefono_whatsapp ? ` (${c.telefono_whatsapp})` : " (Sin WA)";
+                return `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido || ''}${tel}</option>`;
+            }).join("");
+    }
+
+    // Poblar select de cuidadores Correo
+    const cuidadorMail = document.getElementById("notifActCuidadorMail");
+    if (cuidadorMail && Array.isArray(listaCuidadoresCache)) {
+        cuidadorMail.innerHTML = `<option value="">-- Seleccionar Cuidador --</option>` + 
+            listaCuidadoresCache.map(c => {
+                const mail = c.mail ? ` (${c.mail})` : " (Sin email)";
+                return `<option value="${c.id_cuidador}">${c.nombre} ${c.apellido || ''}${mail}</option>`;
+            }).join("");
+    }
+
+    // Limpiar mensaje feedback
+    const fb = document.getElementById("notifActFeedback");
+    if (fb) {
+        fb.classList.add("hidden");
+        fb.className = "hidden p-3 rounded-xl text-xs font-medium";
+        fb.innerHTML = "";
+    }
+
+    cambiarCanalNotifActividades(canal);
+    actualizarVistaPreviaNotifActividades();
+
+    modal.classList.remove("hidden");
+}
+
+function closeModalNotifActividades() {
+    const modal = document.getElementById("modalNotifActividades");
+    if (modal) modal.classList.add("hidden");
+}
+
+function cambiarCanalNotifActividades(canal) {
+    canalNotifActActivo = canal;
+    const tabWA = document.getElementById("tabNotifActWA");
+    const tabMail = document.getElementById("tabNotifActMail");
+    const secWA = document.getElementById("seccionDestinatarioActWA");
+    const secMail = document.getElementById("seccionDestinatarioActMail");
+    const btnEjecutar = document.getElementById("btnEjecutarEnvioNotifAct");
+    const iconHeader = document.getElementById("notifActHeaderIcon");
+
+    if (canal === 'whatsapp') {
+        tabWA.className = "py-2.5 px-4 border-b-2 border-[#25D366] text-[#128C7E] flex items-center gap-1.5 transition-colors font-bold";
+        tabMail.className = "py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors";
+        secWA.classList.remove("hidden");
+        secMail.classList.add("hidden");
+        btnEjecutar.className = "px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-[#25D366] hover:bg-[#20ba5a]";
+        btnEjecutar.innerHTML = `<i class="fa-brands fa-whatsapp text-sm"></i><span>Abrir en WhatsApp</span>`;
+        if (iconHeader) iconHeader.className = "w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-lg flex-shrink-0";
+    } else {
+        tabMail.className = "py-2.5 px-4 border-b-2 border-sky-600 text-sky-600 flex items-center gap-1.5 transition-colors font-bold";
+        tabWA.className = "py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors";
+        secMail.classList.remove("hidden");
+        secWA.classList.add("hidden");
+        btnEjecutar.className = "px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700";
+        btnEjecutar.innerHTML = `<i class="fa-solid fa-paper-plane text-sm"></i><span>Enviar Correo</span>`;
+        if (iconHeader) iconHeader.className = "w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg flex-shrink-0";
+    }
+
+    actualizarVistaPreviaNotifActividades();
+}
+
+function onCambioCuidadorNotifActWA() {
+    const sel = document.getElementById("notifActCuidadorWA");
+    const inputTel = document.getElementById("notifActTelManual");
+    if (sel && sel.value && inputTel) {
+        const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(sel.value));
+        if (cuid && cuid.telefono_whatsapp) {
+            inputTel.value = cuid.telefono_whatsapp;
+        }
+    }
+    actualizarVistaPreviaNotifActividades();
+}
+
+function onCambioTipoDestMailAct() {
+    const sel = document.getElementById("notifActDestTipoMail");
+    const contCuid = document.getElementById("notifActCuidadorContainer");
+    const contManual = document.getElementById("notifActManualContainer");
+    const tipo = sel ? sel.value : "cuidador";
+
+    if (tipo === "cuidador") {
+        contCuid.classList.remove("hidden");
+        contManual.classList.add("hidden");
+    } else if (tipo === "manual") {
+        contCuid.classList.add("hidden");
+        contManual.classList.remove("hidden");
+    } else {
+        contCuid.classList.add("hidden");
+        contManual.classList.add("hidden");
+    }
+    actualizarVistaPreviaNotifActividades();
+}
+
+function obtenerActividadesParaPeriodoJS(periodo, fechaDia) {
+    if (!listaActividadesCache || listaActividadesCache.length === 0) return [];
+
+    let acts = [];
+    if (periodo === 'dia') {
+        const f = fechaDia || formatDateIso(fechaActual || new Date());
+        acts = (listaActividadesCache || []).filter(a => a.fecha === f);
+    } else {
+        acts = [...listaActividadesCache];
+    }
+
+    return acts.sort((a, b) => {
+        const fa = (a.fecha || "") + (a.hora || "");
+        const fb = (b.fecha || "") + (b.hora || "");
+        return fa.localeCompare(fb);
+    });
+}
+
+function construirTextoActividadesWA(actividades, periodoTexto, nombreDest = "") {
+    let msg = `🏥 *SISTEMA DE GESTIÓN DE CUIDADOS*\n`;
+    msg += `🩺 *ACTIVIDADES Y VISITAS MÉDICAS*\n`;
+    msg += `🗓️ *Periodo:* ${periodoTexto}\n\n`;
+
+    if (nombreDest) {
+        msg += `Hola *${nombreDest}*,\n`;
+    }
+    msg += `A continuación te compartimos las actividades y visitas médicas programadas:\n\n`;
+
+    msg += `📋 *ACTIVIDADES MÉDICAS:*\n`;
+    if (actividades && actividades.length > 0) {
+        actividades.forEach((act, idx) => {
+            const fechaObj = new Date(act.fecha + "T00:00:00");
+            const diasSemana = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+            const diaSem = diasSemana[fechaObj.getDay()] || "";
+            const fechaVisual = formatFechaIsoVisual(act.fecha);
+            const horaStr = act.hora ? act.hora.slice(0, 5) : "";
+
+            let medInfo = "";
+            if (act.medico_asignado) {
+                const nomMed = `${act.medico_asignado.nombre} ${act.medico_asignado.apellido || ''}`.trim();
+                medInfo = ` (A cargo: ${nomMed})`;
+            }
+            const descInfo = act.descripcion ? ` - ${act.descripcion.trim()}` : "";
+
+            msg += `  ${idx + 1}. *${act.titulo}*\n`;
+            msg += `     📅 ${diaSem} ${fechaVisual} a las ${horaStr} hrs${medInfo}${descInfo}\n`;
+        });
+    } else {
+        msg += `  • No hay actividades ni visitas médicas programadas para este periodo.\n`;
+    }
+
+    msg += `\n_Por favor confirma la recepción de esta información. ¡Muchas gracias!_`;
+    return msg;
+}
+
+function actualizarVistaPreviaNotifActividades() {
+    const selPeriodo = document.getElementById("notifActPeriodo");
+    const periodo = selPeriodo ? selPeriodo.value : "semana";
+    const contDia = document.getElementById("notifActContainerDia");
+    const selDia = document.getElementById("notifActDiaSelect");
+
+    if (periodo === "dia") {
+        if (contDia) contDia.classList.remove("hidden");
+    } else {
+        if (contDia) contDia.classList.add("hidden");
+    }
+
+    let periodoTexto = "";
+    let fechaDia = "";
+    if (periodo === "dia") {
+        fechaDia = selDia ? selDia.value : formatDateIso(fechaActual || new Date());
+        const dObj = (cuadranteData?.dias || []).find(d => d.fecha === fechaDia);
+        const nom = dObj?.nombre || "";
+        periodoTexto = `${nom} ${formatFechaIsoVisual(fechaDia)}`;
+    } else {
+        if (cuadranteData && cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+            periodoTexto = `Semana del ${formatFechaIsoVisual(cuadranteData.inicio_semana)} al ${formatFechaIsoVisual(cuadranteData.fin_semana)}`;
+        } else {
+            periodoTexto = "Semana Actual";
+        }
+    }
+
+    let nombreDest = "";
+    if (canalNotifActActivo === 'whatsapp') {
+        const selWA = document.getElementById("notifActCuidadorWA");
+        if (selWA && selWA.value) {
+            const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selWA.value));
+            if (cuid) nombreDest = cuid.nombre;
+        }
+    } else {
+        const selTipo = document.getElementById("notifActDestTipoMail")?.value;
+        if (selTipo === "cuidador") {
+            const selMail = document.getElementById("notifActCuidadorMail");
+            if (selMail && selMail.value) {
+                const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selMail.value));
+                if (cuid) nombreDest = cuid.nombre;
+            }
+        }
+    }
+
+    const acts = obtenerActividadesParaPeriodoJS(periodo, fechaDia);
+    const textoMsg = construirTextoActividadesWA(acts, periodoTexto, nombreDest);
+
+    const contPreview = document.getElementById("notifActVistaPrevia");
+    if (contPreview) {
+        contPreview.textContent = textoMsg;
+    }
+}
+
+function copiarTextoNotifActividades() {
+    const contPreview = document.getElementById("notifActVistaPrevia");
+    const texto = contPreview ? contPreview.textContent : "";
+    if (!texto) return;
+
+    navigator.clipboard.writeText(texto).then(() => {
+        const lbl = document.getElementById("btnCopiarTextoActLbl");
+        if (lbl) {
+            const original = lbl.textContent;
+            lbl.textContent = "¡Copiado!";
+            setTimeout(() => { lbl.textContent = original; }, 2000);
+        }
+    }).catch(err => {
+        console.error("Error copiando texto:", err);
+    });
+}
+
+async function ejecutarEnvioNotifActividades() {
+    const fb = document.getElementById("notifActFeedback");
+    if (fb) fb.classList.add("hidden");
+
+    const selPeriodo = document.getElementById("notifActPeriodo");
+    const periodo = selPeriodo ? selPeriodo.value : "semana";
+    const fechaDia = document.getElementById("notifActDiaSelect")?.value || formatDateIso(fechaActual || new Date());
+
+    if (canalNotifActActivo === 'whatsapp') {
+        const inputTel = document.getElementById("notifActTelManual");
+        let rawTel = (inputTel ? inputTel.value : "").trim();
+        if (!rawTel) {
+            const selWA = document.getElementById("notifActCuidadorWA");
+            if (selWA && selWA.value) {
+                const cuid = (listaCuidadoresCache || []).find(c => String(c.id_cuidador) === String(selWA.value));
+                rawTel = (cuid?.telefono_whatsapp || "").trim();
+            }
+        }
+
+        let telLimpio = rawTel.replace(/[^0-9]/g, "");
+        if (!telLimpio) {
+            alert("Por favor selecciona un integrante o ingresa un número de WhatsApp de destino.");
+            return;
+        }
+        if (telLimpio.length === 9 && telLimpio.startsWith("9")) {
+            telLimpio = "56" + telLimpio;
+        }
+
+        const contPreview = document.getElementById("notifActVistaPrevia");
+        const msg = contPreview ? contPreview.textContent : "";
+
+        const urlWA = `https://wa.me/${telLimpio}?text=${encodeURIComponent(msg)}`;
+        window.open(urlWA, "_blank");
+        closeModalNotifActividades();
+    } else {
+        const token = getToken();
+        if (!token) {
+            alert("Debes iniciar sesión para enviar notificaciones por correo.");
+            return;
+        }
+
+        const destTipo = document.getElementById("notifActDestTipoMail")?.value || "cuidador";
+        const idCuidador = document.getElementById("notifActCuidadorMail")?.value || null;
+        const mailManual = (document.getElementById("notifActEmailManual")?.value || "").trim();
+
+        if (destTipo === "cuidador" && !idCuidador) {
+            alert("Por favor selecciona al cuidador de destino.");
+            return;
+        }
+        if (destTipo === "manual" && !mailManual) {
+            alert("Por favor ingresa el correo electrónico de destino.");
+            return;
+        }
+
+        const btn = document.getElementById("btnEjecutarEnvioNotifAct");
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-sm"></i><span>Enviando...</span>`;
+
+        try {
+            const payload = {
+                tipo: periodo,
+                destinatario_tipo: destTipo,
+                id_cuidador: idCuidador ? parseInt(idCuidador, 10) : null,
+                destinatario_email: mailManual || null
+            };
+
+            if (periodo === "dia") {
+                payload.fecha = fechaDia;
+            } else {
+                if (cuadranteData && cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+                    payload.fecha_inicio = cuadranteData.inicio_semana;
+                    payload.fecha_fin = cuadranteData.fin_semana;
+                } else {
+                    payload.fecha = formatDateIso(fechaActual || new Date());
+                }
+            }
+
+            const res = await fetch("/api/admin/notificaciones/enviar-email-actividades", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || "Error en el servidor al enviar correo.");
+            }
+
+            const data = await res.json();
+            if (fb) {
+                fb.classList.remove("hidden");
+                if (data.enviados > 0) {
+                    fb.className = "p-3 rounded-xl text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200";
+                    fb.innerHTML = `<strong>¡Correo enviado exitosamente!</strong> Se enviaron ${data.enviados} correo(s) con las actividades médicas.`;
+                } else {
+                    fb.className = "p-3 rounded-xl text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200";
+                    const detalleErr = data.detalles && data.detalles[0] ? `: ${data.detalles[0].detalle}` : "";
+                    fb.innerHTML = `<strong>Atención:</strong> No se pudo enviar el correo${detalleErr}`;
+                }
+            }
+        } catch (err) {
+            console.error("Error al enviar email de actividades:", err);
+            if (fb) {
+                fb.classList.remove("hidden");
+                fb.className = "p-3 rounded-xl text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200";
+                fb.innerHTML = `<strong>Error:</strong> ${err.message || "No se pudo enviar el correo."}`;
+            }
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}

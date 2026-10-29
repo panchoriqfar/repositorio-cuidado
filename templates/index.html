@@ -255,10 +255,24 @@
                     </div>
                 </div>
 
-                <button id="btnNuevaActividad" onclick="openActividadModal()" class="hidden w-full sm:w-auto px-4 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm transition-all items-center justify-center gap-1.5 whitespace-nowrap">
-                    <i class="fa-solid fa-plus"></i>
-                    <span>Nueva Actividad Médica</span>
-                </button>
+                <div class="w-full sm:w-auto flex flex-wrap items-center gap-2">
+                    <!-- Botón WhatsApp Actividades -->
+                    <button onclick="openModalNotifActividades('whatsapp')" id="btnNotifWAActividades" class="px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por WhatsApp">
+                        <i class="fa-brands fa-whatsapp text-sm"></i>
+                        <span>WhatsApp</span>
+                    </button>
+
+                    <!-- Botón Correo Actividades -->
+                    <button onclick="openModalNotifActividades('email')" id="btnNotifMailActividades" class="px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por Correo Electrónico">
+                        <i class="fa-solid fa-envelope text-sm"></i>
+                        <span>Correo</span>
+                    </button>
+
+                    <button id="btnNuevaActividad" onclick="openActividadModal()" class="hidden w-full sm:w-auto px-4 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm transition-all items-center justify-center gap-1.5 whitespace-nowrap">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Nueva Actividad Médica</span>
+                    </button>
+                </div>
             </div>
 
             <div id="contenedorActividades" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -320,6 +334,120 @@
     </footer>
 
     <!-- ==================== MODALES ==================== -->
+    <!-- MODAL: NOTIFICACIÓN EXCLUSIVA DE ACTIVIDADES MÉDICAS (WHATSAPP Y CORREO) -->
+    <div id="modalNotifActividades" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp my-auto max-h-[92vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-3">
+                    <div id="notifActHeaderIcon" class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-lg flex-shrink-0">
+                        <i class="fa-solid fa-stethoscope"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base sm:text-lg leading-tight">Enviar Actividades Médicas</h3>
+                        <p class="text-xs text-slate-500">Envío exclusivo de actividades y visitas médicas (sin turnos ni medicamentos)</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeModalNotifActividades()" class="text-slate-400 hover:text-slate-600 text-xl p-1 leading-none rounded-lg hover:bg-slate-100 transition-colors">&times;</button>
+            </div>
+
+            <!-- Selector de Canal (Pestañas WhatsApp / Correo) -->
+            <div class="flex border-b border-slate-200 text-xs font-bold">
+                <button type="button" id="tabNotifActWA" onclick="cambiarCanalNotifActividades('whatsapp')" class="py-2.5 px-4 border-b-2 border-[#25D366] text-[#128C7E] flex items-center gap-1.5 transition-colors">
+                    <i class="fa-brands fa-whatsapp text-sm text-[#25D366]"></i>
+                    <span>WhatsApp</span>
+                </button>
+                <button type="button" id="tabNotifActMail" onclick="cambiarCanalNotifActividades('email')" class="py-2.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors">
+                    <i class="fa-solid fa-envelope text-sm text-sky-600"></i>
+                    <span>Correo Electrónico</span>
+                </button>
+            </div>
+
+            <div class="space-y-3.5 overflow-y-auto flex-1 pr-1 text-xs">
+                <!-- Selector de Periodo -->
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Periodo a Enviar:</label>
+                    <select id="notifActPeriodo" onchange="actualizarVistaPreviaNotifActividades()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium">
+                        <option value="semana">Semana Actual Completa (Consolidada)</option>
+                        <option value="dia">Día Específico</option>
+                    </select>
+                </div>
+
+                <!-- Selector de Día (Visible solo si periodo === 'dia') -->
+                <div id="notifActContainerDia" class="hidden">
+                    <label class="block font-semibold text-slate-700 mb-1">Seleccionar Día:</label>
+                    <select id="notifActDiaSelect" onchange="actualizarVistaPreviaNotifActividades()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    </select>
+                </div>
+
+                <!-- DESTINATARIO: SECCIÓN WHATSAPP -->
+                <div id="seccionDestinatarioActWA" class="space-y-2">
+                    <label class="block font-semibold text-slate-700">Destinatario WhatsApp:</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <select id="notifActCuidadorWA" onchange="onCambioCuidadorNotifActWA()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="">-- Seleccionar Integrante --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <input type="text" id="notifActTelManual" placeholder="O ingresar tel: +569XXXXXXXX" oninput="actualizarVistaPreviaNotifActividades()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DESTINATARIO: SECCIÓN CORREO -->
+                <div id="seccionDestinatarioActMail" class="hidden space-y-2">
+                    <label class="block font-semibold text-slate-700">Destinatario Correo:</label>
+                    <div class="space-y-2">
+                        <select id="notifActDestTipoMail" onchange="onCambioTipoDestMailAct()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                            <option value="cuidador">A un integrante específico</option>
+                            <option value="todos">A todos los cuidadores activos con correo</option>
+                            <option value="manual">Ingresar correo manualmente (médico, familiar, etc.)</option>
+                        </select>
+
+                        <div id="notifActCuidadorContainer">
+                            <select id="notifActCuidadorMail" onchange="actualizarVistaPreviaNotifActividades()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                                <option value="">-- Seleccionar Cuidador --</option>
+                            </select>
+                        </div>
+
+                        <div id="notifActManualContainer" class="hidden">
+                            <input type="email" id="notifActEmailManual" placeholder="ejemplo@correo.com" oninput="actualizarVistaPreviaNotifActividades()" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VISTA PREVIA DEL MENSAJE -->
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="font-semibold text-slate-700">Vista Previa del Contenido:</label>
+                        <button type="button" onclick="copiarTextoNotifActividades()" class="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium transition-colors">
+                            <i class="fa-regular fa-copy"></i>
+                            <span id="btnCopiarTextoActLbl">Copiar</span>
+                        </button>
+                    </div>
+                    <div id="notifActVistaPrevia" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 font-mono text-[11px] whitespace-pre-wrap max-h-44 overflow-y-auto select-all leading-relaxed">
+                        Cargando vista previa...
+                    </div>
+                </div>
+
+                <!-- MENSAJE DE ESTADO / FEEDBACK -->
+                <div id="notifActFeedback" class="hidden p-3 rounded-xl text-xs font-medium"></div>
+            </div>
+
+            <!-- Footer / Botones de Acción -->
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onclick="closeModalNotifActividades()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors">
+                    Cancelar
+                </button>
+                <button type="button" id="btnEjecutarEnvioNotifAct" onclick="ejecutarEnvioNotifActividades()" class="px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 bg-[#25D366] hover:bg-[#20ba5a]">
+                    <i class="fa-brands fa-whatsapp text-sm"></i>
+                    <span>Abrir en WhatsApp</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: NOTIFICACIÓN EXCLUSIVA DE MEDICAMENTOS (WHATSAPP Y CORREO) -->
     <div id="modalNotifMedicamentos" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
         <div class="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp my-auto max-h-[92vh] flex flex-col">
@@ -1244,6 +1372,6 @@
     </div>
 
     <!-- SCRIPT PRINCIPAL CON CACHE-BUSTING -->
-    <script src="/static/js/app.js?v=16.0"></script>
+    <script src="/static/js/app.js?v=17.0"></script>
 </body>
 </html>

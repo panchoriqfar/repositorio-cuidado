@@ -789,6 +789,39 @@ def enviar_email_medicamentos(
     )
 
 
+@app.post("/api/admin/notificaciones/enviar-email-actividades", response_model=schemas.NotificacionEmailResponse)
+def enviar_email_actividades(
+    payload: schemas.NotificacionEmailActividadesRequest,
+    current_user: Usuario = Depends(auth.require_admin_or_super_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Envía por correo electrónico la lista exclusiva de actividades y visitas médicas
+    (sin turnos ni medicamentos).
+    """
+    tipo = payload.tipo or "semana"
+    if tipo == "dia":
+        f_ini = payload.fecha or date.today()
+        f_fin = f_ini
+    else:
+        if payload.fecha_inicio and payload.fecha_fin:
+            f_ini = payload.fecha_inicio
+            f_fin = payload.fecha_fin
+        else:
+            base = payload.fecha or date.today()
+            f_ini = base - timedelta(days=base.weekday())
+            f_fin = f_ini + timedelta(days=6)
+
+    return email_service.enviar_correos_solo_actividades_periodo(
+        db=db,
+        fecha_inicio=f_ini,
+        fecha_fin=f_fin,
+        destinatario_tipo=payload.destinatario_tipo or "todos",
+        id_cuidador=payload.id_cuidador,
+        email_manual=payload.destinatario_email
+    )
+
+
 @app.post("/api/admin/notificaciones/enviar-email-prueba")
 def enviar_email_prueba(
     payload: schemas.EnvioEmailPruebaRequest,

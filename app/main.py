@@ -835,15 +835,27 @@ def enviar_email_horario(
     los cuidadores con turnos o a uno en particular.
     """
     tipo = payload.tipo or "semana"
-    fecha = payload.fecha or date.today()
+    if tipo == "dia":
+        f_ini = payload.fecha or date.today()
+        f_fin = f_ini
+    else:
+        if payload.fecha_inicio and payload.fecha_fin:
+            f_ini = payload.fecha_inicio
+            f_fin = payload.fecha_fin
+        else:
+            base = payload.fecha or date.today()
+            f_ini = base - timedelta(days=base.weekday())
+            f_fin = f_ini + timedelta(days=6)
 
     return email_service.enviar_correos_horario_periodo(
         db=db,
-        fecha_base=fecha,
+        fecha_base=f_ini,
         tipo=tipo,
         destinatario_tipo=payload.destinatario_tipo or "todos",
         id_cuidador=payload.id_cuidador,
-        email_manual=payload.destinatario_email
+        email_manual=payload.destinatario_email,
+        fecha_inicio=f_ini,
+        fecha_fin=f_fin
     )
 
 

@@ -44,7 +44,15 @@
 }
 
 
-/* === OPTIMIZACIONES PARA DISPOSITIVOS MÓVILES === */
+/* === OPTIMIZACIONES GLOBALES Y PARA DISPOSITIVOS MÓVILES === */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
 .no-scrollbar::-webkit-scrollbar {
     display: none;
 }
@@ -58,6 +66,10 @@
     scroll-behavior: smooth;
 }
 
+#adminQuickActions {
+    -webkit-overflow-scrolling: touch;
+}
+
 /* Sombra sutil para la columna fija de bloques en el cuadrante */
 /* Columna pegajosa con sombra ÚNICAMENTE en pantallas donde hay scroll horizontal */
 @media (max-width: 1023px) {
@@ -66,7 +78,7 @@
         left: 0;
         z-index: 20;
         background-color: #f1f5f9;
-        box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+        box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.12);
     }
 
     .sticky-col-cell {
@@ -74,7 +86,7 @@
         left: 0;
         z-index: 10;
         background-color: #f8fafc;
-        box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.08);
+        box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.12);
     }
 }
 
@@ -89,13 +101,29 @@
 
 /* Mejor experiencia táctil en pantallas móviles */
 @media (max-width: 640px) {
-    .modal-content-mobile {
+    /* Evitar zoom automático indeseado en inputs en iOS Safari manteniendo óptima legibilidad */
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="number"],
+    input[type="date"],
+    input[type="time"],
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+
+    /* Modales adaptados a pantallas móviles y teclados virtuales */
+    .modal-dialog-mobile {
+        max-height: calc(100dvh - 1.5rem) !important;
         max-height: 92vh !important;
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch;
+        margin-top: auto !important;
+        margin-bottom: auto !important;
     }
 
-    button, input, select {
+    button, input, select, textarea, a {
         touch-action: manipulation;
     }
 }

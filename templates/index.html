@@ -2,7 +2,10 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0284c7">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>Gestión de Turnos de Cuidadores y Actividades Médicas</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -31,7 +34,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Dancing+Script:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=4.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=5.0">
     <style>
         /* Control estricto de visibilidad para Login y Logout en la versión Web */
         #loginBtn.hidden { display: none !important; }
@@ -117,6 +120,7 @@
                             <i class="fa-solid fa-arrow-right-from-bracket"></i>
                             <span>Salir</span>
                         </button>
+
                     </div>
 
                 </div>
@@ -174,27 +178,30 @@
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <!-- Indicador visual de deslizamiento horizontal para mobile -->
             <div class="sm:hidden px-3.5 py-2 bg-gradient-to-r from-brand-50 via-slate-50 to-brand-50 border-b border-slate-200 flex items-center justify-between text-[11px] text-brand-800 font-medium select-none">
-                <span class="flex items-center gap-1.5">
-                    <i class="fa-solid fa-arrows-left-right text-brand-600 animate-pulse"></i>
-                    <span>Desliza horizontalmente para ver toda la semana</span>
+                <span class="flex items-center gap-1.5 min-w-0">
+                    <i class="fa-solid fa-arrows-left-right text-brand-600 animate-pulse shrink-0"></i>
+                    <span class="truncate">Desliza para ver la semana</span>
                 </span>
-                <span class="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold">7 Días</span>
+                <button type="button" onclick="scrollCuadranteAHoy()" class="shrink-0 px-2.5 py-1 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white text-[11px] font-bold rounded-lg shadow-xs flex items-center gap-1 transition-all" title="Centrar en el día de hoy">
+                    <i class="fa-solid fa-calendar-day"></i>
+                    <span>Ver Hoy</span>
+                </button>
             </div>
 
             <div class="overflow-x-auto table-scroll-container">
                 <table class="w-full border-collapse text-left text-sm" id="tablaCuadrante">
                     <thead>
                         <tr class="bg-slate-100/90 border-b border-slate-200 text-slate-700">
-                            <th class="p-3 sm:p-4 font-semibold text-xs tracking-wider uppercase text-slate-500 w-32 sm:w-44 min-w-[125px] sm:min-w-[170px] sticky-col-header">
-                                Bloque Horario
+                            <th class="p-2 sm:p-4 font-semibold text-[11px] sm:text-xs tracking-wider uppercase text-slate-500 w-24 sm:w-44 min-w-[95px] sm:min-w-[170px] sticky-col-header">
+                                Bloque
                             </th>
-                            <th id="th-dia-0" class="p-3 sm:p-4 font-semibold text-center min-w-[145px] sm:min-w-[160px]">Lunes</th>
-                            <th id="th-dia-1" class="p-3 sm:p-4 font-semibold text-center min-w-[145px] sm:min-w-[160px]">Martes</th>
-                            <th id="th-dia-2" class="p-3 sm:p-4 font-semibold text-center min-w-[145px] sm:min-w-[160px]">Miércoles</th>
-                            <th id="th-dia-3" class="p-3 sm:p-4 font-semibold text-center min-w-[145px] sm:min-w-[160px]">Jueves</th>
-                            <th id="th-dia-4" class="p-3 sm:p-4 font-semibold text-center min-w-[145px] sm:min-w-[160px]">Viernes</th>
-                            <th id="th-dia-5" class="p-3 sm:p-4 font-semibold text-center min-w-[145px] sm:min-w-[160px]">Sábado</th>
-                            <th id="th-dia-6" class="p-3 sm:p-4 font-semibold text-center min-w-[145px] sm:min-w-[160px]">Domingo</th>
+                            <th id="th-dia-0" class="p-2.5 sm:p-4 font-semibold text-center min-w-[135px] sm:min-w-[160px]">Lunes</th>
+                            <th id="th-dia-1" class="p-2.5 sm:p-4 font-semibold text-center min-w-[135px] sm:min-w-[160px]">Martes</th>
+                            <th id="th-dia-2" class="p-2.5 sm:p-4 font-semibold text-center min-w-[135px] sm:min-w-[160px]">Miércoles</th>
+                            <th id="th-dia-3" class="p-2.5 sm:p-4 font-semibold text-center min-w-[135px] sm:min-w-[160px]">Jueves</th>
+                            <th id="th-dia-4" class="p-2.5 sm:p-4 font-semibold text-center min-w-[135px] sm:min-w-[160px]">Viernes</th>
+                            <th id="th-dia-5" class="p-2.5 sm:p-4 font-semibold text-center min-w-[135px] sm:min-w-[160px]">Sábado</th>
+                            <th id="th-dia-6" class="p-2.5 sm:p-4 font-semibold text-center min-w-[135px] sm:min-w-[160px]">Domingo</th>
                         </tr>
                     </thead>
                     <tbody id="cuadranteBody" class="divide-y divide-slate-100">
@@ -251,13 +258,13 @@
 
                 <div class="w-full sm:w-auto flex flex-wrap items-center gap-2">
                     <!-- Botón WhatsApp Actividades -->
-                    <button onclick="openModalNotifActividades('whatsapp')" id="btnNotifWAActividades" class="px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por WhatsApp">
+                    <button onclick="openModalNotifActividades('whatsapp')" id="btnNotifWAActividades" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por WhatsApp">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
                         <span>WhatsApp</span>
                     </button>
 
                     <!-- Botón Correo Actividades -->
-                    <button onclick="openModalNotifActividades('email')" id="btnNotifMailActividades" class="px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por Correo Electrónico">
+                    <button onclick="openModalNotifActividades('email')" id="btnNotifMailActividades" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar actividades médicas por Correo Electrónico">
                         <i class="fa-solid fa-envelope text-sm"></i>
                         <span>Correo</span>
                     </button>
@@ -295,13 +302,13 @@
                     </select>
 
                     <!-- Botón WhatsApp Medicamentos -->
-                    <button onclick="openModalNotifMedicamentos('whatsapp')" id="btnNotifWAMedicamentos" class="px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por WhatsApp">
+                    <button onclick="openModalNotifMedicamentos('whatsapp')" id="btnNotifWAMedicamentos" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-bold bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por WhatsApp">
                         <i class="fa-brands fa-whatsapp text-sm"></i>
                         <span>WhatsApp</span>
                     </button>
 
                     <!-- Botón Correo Medicamentos -->
-                    <button onclick="openModalNotifMedicamentos('email')" id="btnNotifMailMedicamentos" class="px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por Correo Electrónico">
+                    <button onclick="openModalNotifMedicamentos('email')" id="btnNotifMailMedicamentos" class="flex-1 sm:flex-initial px-3 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap" title="Enviar pauta de medicamentos por Correo Electrónico">
                         <i class="fa-solid fa-envelope text-sm"></i>
                         <span>Correo</span>
                     </button>
@@ -672,8 +679,8 @@
 
 
     <!-- 1. MODAL LOGIN -->
-    <div id="loginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scaleUp">
+    <div id="loginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-5 animate-scaleUp modal-dialog-mobile">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2.5">
                     <div class="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center">
@@ -702,8 +709,8 @@
     </div>
 
     <!-- 2. MODAL ASIGNAR TURNO A CUIDADOR (CON SELECCIÓN DE HORAS 00:00 A 23:59) -->
-    <div id="asignacionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+    <div id="asignacionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-brand-700">
                     <i class="fa-solid fa-clock text-lg"></i>
@@ -789,8 +796,8 @@
     </div>
 
     <!-- 3. MODAL ACTIVIDAD MÉDICA (PERSONAL MÉDICO ASIGNABLE Opcional) -->
-    <div id="actividadModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+    <div id="actividadModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-teal-700">
                     <i class="fa-solid fa-notes-medical text-lg"></i>
@@ -836,8 +843,8 @@
     </div>
 
     <!-- 4. MODAL GESTIÓN DE CUIDADORES -->
-    <div id="cuidadoresModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col">
+    <div id="cuidadoresModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-brand-700">
                     <i class="fa-solid fa-hands-holding-child text-xl"></i>
@@ -888,8 +895,8 @@
     </div>
 
     <!-- MODAL EDITAR CUIDADOR -->
-    <div id="editarCuidadorModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+    <div id="editarCuidadorModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-sky-700">
                     <i class="fa-solid fa-user-pen text-xl"></i>
@@ -939,8 +946,8 @@
     </div>
 
     <!-- 5. MODAL GESTIÓN DE PERSONAL MÉDICO -->
-    <div id="medicosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col">
+    <div id="medicosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-teal-700">
                     <i class="fa-solid fa-user-doctor text-xl"></i>
@@ -982,7 +989,7 @@
 
     <!-- 5.1 MODAL GESTIÓN DE MEDICAMENTOS -->
     <div id="medicamentosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-        <div class="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[92vh] flex flex-col my-auto">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[92vh] flex flex-col my-auto modal-dialog-mobile">
             <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div class="flex items-center space-x-2.5 text-rose-600">
                     <div class="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center">
@@ -1122,8 +1129,8 @@
     </div>
 
     <!-- 5.2 MODAL CLONAR / EXTENDER HORARIOS A TRATAMIENTO EXISTENTE -->
-    <div id="clonarHorariosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+    <div id="clonarHorariosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-rose-600">
                     <i class="fa-solid fa-copy text-lg"></i>
@@ -1159,8 +1166,8 @@
     </div>
 
     <!-- 6. MODAL NOTIFICACIONES POR WHATSAPP INDIVIDUAL -->
-    <div id="modalWhatsAppIndividual" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+    <div id="modalWhatsAppIndividual" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp modal-dialog-mobile">
             <!-- Encabezado del Modal -->
             <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div class="flex items-center space-x-3 text-[#25D366]">
@@ -1248,8 +1255,8 @@
     </div>
 
     <!-- 6b. MODAL NOTIFICACIONES POR CORREO ELECTRÓNICO (RESEND) -->
-    <div id="notificacionEmailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+    <div id="notificacionEmailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-sky-600">
                     <i class="fa-solid fa-envelope text-2xl"></i>
@@ -1290,8 +1297,8 @@
     </div>
 
     <!-- 7. MODAL GESTIÓN DE USUARIOS Y ROLES (RBAC) -->
-    <div id="usuariosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col">
+    <div id="usuariosModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp max-h-[90vh] flex flex-col modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-indigo-700">
                     <i class="fa-solid fa-users-gear text-xl"></i>
@@ -1357,8 +1364,8 @@
     </div>
 
     <!-- 8. MODAL CAMBIO DE CONTRASEÑA (Primer login obligatorio + acceso voluntario) -->
-    <div id="cambiarPasswordModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+    <div id="cambiarPasswordModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp modal-dialog-mobile">
             <div class="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div class="flex items-center space-x-2 text-amber-600">
                     <i class="fa-solid fa-key text-xl"></i>
@@ -1410,7 +1417,7 @@
 
     <!-- 6. MODAL GENERAR Y DESCARGAR IMAGEN SEMANAL (AFICHE ESTILO CANVA) -->
     <div id="modalGenerarImagen" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-        <div class="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto">
+        <div class="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto modal-dialog-mobile">
             <!-- Encabezado modal -->
             <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div class="flex items-center space-x-2.5">
@@ -1460,17 +1467,17 @@
                 </span>
                 
                 <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" onclick="copiarImagenAlPortapapeles()" id="btnCopiarPortapapeles" class="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer" title="Copiar imagen directamente para pegar con Ctrl+V en WhatsApp o email">
+                    <button type="button" onclick="copiarImagenAlPortapapeles()" id="btnCopiarPortapapeles" class="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer" title="Copiar imagen directamente para pegar con Ctrl+V en WhatsApp o email">
                         <i class="fa-regular fa-copy"></i>
                         <span id="textoBtnCopiar">Copiar Imagen</span>
                     </button>
 
-                    <button type="button" onclick="descargarImagenGenerada('jpeg')" class="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+                    <button type="button" onclick="descargarImagenGenerada('jpeg')" class="flex-1 sm:flex-initial px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer">
                         <i class="fa-solid fa-download"></i>
                         <span>Descargar JPG</span>
                     </button>
 
-                    <button type="button" onclick="descargarImagenGenerada('png')" class="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+                    <button type="button" onclick="descargarImagenGenerada('png')" class="flex-1 sm:flex-initial px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer">
                         <i class="fa-solid fa-download"></i>
                         <span>Descargar PNG</span>
                     </button>
@@ -1480,6 +1487,6 @@
     </div>
 
     <!-- SCRIPT PRINCIPAL CON CACHE-BUSTING -->
-    <script src="/static/js/app.js?v=18.0"></script>
+    <script src="/static/js/app.js?v=20.0"></script>
 </body>
 </html>

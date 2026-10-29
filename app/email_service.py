@@ -20,6 +20,7 @@ from app.medicamentos_service import (
     esta_en_jornada_asig,
     corresponde_medicamento_a_cuidador,
     formatear_pauta_medicamentos,
+    to_date_obj,
 )
 
 load_dotenv()
@@ -132,7 +133,7 @@ def construir_contenido_diario(
     cuidador: Cuidador,
     asignacion: Union[AsignacionTurno, List[AsignacionTurno]],
     actividades: List[ActividadMedica],
-    medicamentos: Optional[List[MedicamentoHorario]] = None
+    medicamentos: Optional[Union[List[Any], Dict[date, List[Any]]]] = None
 ) -> Tuple[str, str, str]:
     """
     Construye el asunto, texto plano y HTML del correo diario
@@ -162,9 +163,18 @@ def construir_contenido_diario(
     ]
 
     # Sección de Medicamentos de la Jornada (Pauta Agrupada Fluida)
+    tomas_diarias = []
     if medicamentos:
-        lineas_texto.append("Medicamentos a administrar en tu turno:")
-        meds_fmt = formatear_pauta_medicamentos(medicamentos)
+        if isinstance(medicamentos, dict):
+            for d, ml in medicamentos.items():
+                tomas_diarias.extend(ml)
+        elif isinstance(medicamentos, (list, tuple)):
+            tomas_diarias = list(medicamentos)
+
+    meds_fmt = formatear_pauta_medicamentos(tomas_diarias) if tomas_diarias else []
+
+    if meds_fmt:
+        lineas_texto.append("Medicamentos a administrar:")
         for item in meds_fmt:
             lineas_texto.append(f"- {item['texto_plano']}")
         lineas_texto.append("")
@@ -203,12 +213,11 @@ def construir_contenido_diario(
 
     # HTML elegante para medicamentos (Pauta Agrupada Fluida)
     medicamentos_html = ""
-    if medicamentos:
-        meds_fmt = formatear_pauta_medicamentos(medicamentos)
-        medicamentos_html = "<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin: 12px 0;'>"
-        medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.6;'>"
+    if meds_fmt:
+        medicamentos_html = "<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin: 16px 0;'>"
+        medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.7;'>"
         for item in meds_fmt:
-            medicamentos_html += f"<li style='margin-bottom: 4px;'>{item['texto_html']}</li>"
+            medicamentos_html += f"<li style='margin-bottom: 8px;'>{item['texto_html']}</li>"
         medicamentos_html += "</ul></div>"
     else:
         medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes administración de medicamentos programada para tu turno.</p>"
@@ -269,7 +278,7 @@ def construir_contenido_semanal(
     actividades_por_fecha: Dict[date, List[ActividadMedica]],
     inicio_semana: date,
     fin_semana: date,
-    medicamentos_por_fecha: Optional[Dict[date, List[MedicamentoHorario]]] = None
+    medicamentos_por_fecha: Optional[Union[Dict[date, List[Any]], List[Any]]] = None
 ) -> Tuple[str, str, str]:
     """
     Construye el asunto, texto plano y HTML del correo semanal
@@ -310,16 +319,22 @@ def construir_contenido_semanal(
                         vistos_actividades.add(clave_act)
                         todas_actividades.append((act.fecha, act))
 
-    # Pauta completa de medicamentos de la semana (sin omitir días por turnos del cuidador)
+    # Pauta completa de medicamentos de la semana (idéntica lógica al botón de medicamentos)
+    tomas_semana = []
     if medicamentos_por_fecha:
-        for d in sorted(medicamentos_por_fecha.keys()):
-            if inicio_semana <= d <= fin_semana:
-                for m in medicamentos_por_fecha[d]:
-                    nom_m = m.tratamiento.nombre_medicamento if m.tratamiento else "Medicamento"
-                    clave_med = (m.dia, m.hora, nom_m)
-                    if clave_med not in vistos_medicamentos:
-                        vistos_medicamentos.add(clave_med)
-                        todos_medicamentos.append((m.dia, m))
+        if isinstance(medicamentos_por_fecha, dict):
+            for d in sorted(medicamentos_por_fecha.keys()):
+                d_obj = to_date_obj(d) or (d if isinstance(d, date) else None)
+                if d_obj is None or (inicio_semana <= d_obj <= fin_semana):
+                    tomas_semana.extend(medicamentos_por_fecha[d])
+        elif isinstance(medicamentos_por_fecha, (list, tuple)):
+            for m in medicamentos_por_fecha:
+                d_val = getattr(m, "dia", None)
+                d_obj = to_date_obj(d_val) or (d_val if isinstance(d_val, date) else None)
+                if d_obj is None or (inicio_semana <= d_obj <= fin_semana):
+                    tomas_semana.append(m)
+
+    meds_fmt_sem = formatear_pauta_medicamentos(tomas_semana) if tomas_semana else []
 
     rango_str = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
     hora_actual = datetime.now().strftime("%H:%M:%S")
@@ -332,10 +347,9 @@ def construir_contenido_semanal(
     ]
 
     # Pauta de medicamentos agrupada para toda la semana
-    if todos_medicamentos:
-        lineas_texto.append("Medicamentos a administrar en tus turnos de la semana:")
-        meds_fmt = formatear_pauta_medicamentos([m for d, m in todos_medicamentos])
-        for item in meds_fmt:
+    if meds_fmt_sem:
+        lineas_texto.append("Medicamentos a administrar:")
+        for item in meds_fmt_sem:
             lineas_texto.append(f"- {item['texto_plano']}")
         lineas_texto.append("")
     else:
@@ -363,15 +377,14 @@ def construir_contenido_semanal(
     dias_items_html = "".join([f"<li style='margin-bottom: 6px;'>{item}</li>" for item in dias_bloques_list])
 
     medicamentos_html = ""
-    if todos_medicamentos:
-        meds_fmt = formatear_pauta_medicamentos([m for d, m in todos_medicamentos])
-        medicamentos_html = "<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin: 12px 0;'>"
-        medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.6;'>"
-        for item in meds_fmt:
-            medicamentos_html += f"<li style='margin-bottom: 6px;'>{item['texto_html']}</li>"
+    if meds_fmt_sem:
+        medicamentos_html = "<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin: 16px 0;'>"
+        medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.7;'>"
+        for item in meds_fmt_sem:
+            medicamentos_html += f"<li style='margin-bottom: 8px;'>{item['texto_html']}</li>"
         medicamentos_html += "</ul></div>"
     else:
-        medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 13px;'>No tienes administración de medicamentos programada en tus turnos.</p>"
+        medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes administración de medicamentos programada en tus turnos.</p>"
 
     actividades_html = ""
     if todas_actividades:
@@ -615,12 +628,8 @@ def enviar_correos_semana_completa(fecha_base: date, db: Session) -> Dict[str, A
     medicamentos: List[TomaMedicamento] = obtener_medicamentos_programados(
         db=db,
         fecha_inicio=inicio_semana,
-        fecha_fin=dia_extra
+        fecha_fin=fin_semana
     )
-
-    medicamentos_por_fecha: Dict[date, List[TomaMedicamento]] = {}
-    for m in medicamentos:
-        medicamentos_por_fecha.setdefault(m.dia, []).append(m)
 
     asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
     for asig in asignaciones:
@@ -661,7 +670,7 @@ def enviar_correos_semana_completa(fecha_base: date, db: Session) -> Dict[str, A
                 actividades_por_fecha=actividades_por_fecha,
                 inicio_semana=inicio_semana,
                 fin_semana=fin_semana,
-                medicamentos_por_fecha=medicamentos_por_fecha
+                medicamentos_por_fecha=medicamentos
             )
             resend_resp = enviar_email_via_resend(cuid.mail, subject, text, html)
             if isinstance(resend_resp, dict) and resend_resp.get("status") == "error":
@@ -1131,20 +1140,22 @@ def enviar_correos_solo_actividades_periodo(
 
 def enviar_correos_horario_periodo(
     db: Session,
-    fecha_base: date,
+    fecha_base: Optional[date] = None,
     tipo: str = "semana",
     destinatario_tipo: str = "todos",
     id_cuidador: Optional[int] = None,
-    email_manual: Optional[str] = None
+    email_manual: Optional[str] = None,
+    fecha_inicio: Optional[date] = None,
+    fecha_fin: Optional[date] = None
 ) -> Dict[str, Any]:
     """
     Envía la planificación de horarios y turnos por correo electrónico vía Resend,
-    con las actividades médicas y medicamentos asignados a cada cuidador según corresponda.
-    Permite seleccionar entre semana completa o día específico, y enviar a todos
-    los cuidadores con turnos o a uno en particular.
+    con las actividades médicas y la pauta completa de medicamentos asignada a cada cuidador según corresponda.
+    Aprovecha la misma lógica robusta del botón de medicamentos para asegurar que todas las tomas
+    y pautas farmacológicas sean incluidas sin omisión.
     """
     if tipo == "dia":
-        fecha_objetivo = fecha_base
+        fecha_objetivo = fecha_inicio or fecha_base or date.today()
         dia_nom = DIAS_ESPANOL.get(fecha_objetivo.weekday(), "")
         titulo_periodo = f"{dia_nom} {fecha_objetivo.strftime('%d/%m/%Y')}"
         dia_siguiente = fecha_objetivo + timedelta(days=1)
@@ -1167,12 +1178,11 @@ def enviar_correos_horario_periodo(
             .all()
         )
 
-        inicio_sem = fecha_objetivo - timedelta(days=fecha_objetivo.weekday())
-        fin_sem = inicio_sem + timedelta(days=6)
+        # Misma lógica que el botón de medicamentos: obtener todas las tomas programadas y arrastradas
         medicamentos_dia: List[TomaMedicamento] = obtener_medicamentos_programados(
             db=db,
-            fecha_inicio=inicio_sem,
-            fecha_fin=fin_sem
+            fecha_inicio=fecha_objetivo,
+            fecha_fin=fecha_objetivo
         )
 
         asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
@@ -1265,10 +1275,16 @@ def enviar_correos_horario_periodo(
 
     else:
         # tipo == "semana"
-        inicio_semana = fecha_base - timedelta(days=fecha_base.weekday())
-        fin_semana = inicio_semana + timedelta(days=6)
+        if fecha_inicio and fecha_fin:
+            inicio_semana = fecha_inicio
+            fin_semana = fecha_fin
+        else:
+            base = fecha_base or date.today()
+            inicio_semana = base - timedelta(days=base.weekday())
+            fin_semana = inicio_semana + timedelta(days=6)
+
         dia_extra = fin_semana + timedelta(days=1)
-        titulo_periodo = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
+        titulo_periodo = f"Semana del {inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
 
         q = (
             db.query(AsignacionTurno)
@@ -1298,14 +1314,12 @@ def enviar_correos_horario_periodo(
         for act in actividades:
             actividades_por_fecha.setdefault(act.fecha, []).append(act)
 
-        medicamentos = obtener_medicamentos_programados(
+        # Misma lógica que el botón de medicamentos: obtener todas las tomas programadas y arrastradas de la semana
+        medicamentos: List[TomaMedicamento] = obtener_medicamentos_programados(
             db=db,
             fecha_inicio=inicio_semana,
-            fecha_fin=dia_extra
+            fecha_fin=fin_semana
         )
-        medicamentos_por_fecha: Dict[date, List[TomaMedicamento]] = {}
-        for m in medicamentos:
-            medicamentos_por_fecha.setdefault(m.dia, []).append(m)
 
         asigs_por_cuidador: Dict[int, List[AsignacionTurno]] = {}
         for asig in asignaciones:
@@ -1367,7 +1381,7 @@ def enviar_correos_horario_periodo(
                     actividades_por_fecha=actividades_por_fecha,
                     inicio_semana=inicio_semana,
                     fin_semana=fin_semana,
-                    medicamentos_por_fecha=medicamentos_por_fecha
+                    medicamentos_por_fecha=medicamentos
                 )
                 resend_resp = enviar_email_via_resend(destino_mail, subject, text, html)
                 if isinstance(resend_resp, dict) and resend_resp.get("status") == "error":

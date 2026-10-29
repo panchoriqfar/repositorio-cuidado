@@ -393,7 +393,7 @@ async function cargarCuadrante() {
             const dObj = new Date(dia.fecha + "T00:00:00");
             const esHoyClass = dia.es_hoy ? "bg-brand-50 border-brand-200 text-brand-900 ring-2 ring-brand-400" : "";
             
-            th.className = `p-3.5 text-center min-w-[150px] transition-all ${esHoyClass}`;
+            th.className = `p-2.5 sm:p-3.5 text-center min-w-[135px] sm:min-w-[160px] transition-all ${esHoyClass}`;
             th.innerHTML = `
                 <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">${dia.nombre}</div>
                 <div class="text-sm font-bold text-slate-800">${dObj.getDate()} ${meses[dObj.getMonth()]}</div>
@@ -414,10 +414,10 @@ async function cargarCuadrante() {
             else if (bloque.codigo_bloque === "N") bloqueBadgeColor = "bg-purple-50 text-purple-700 border-purple-200";
 
             const tdBloque = document.createElement("td");
-            tdBloque.className = "p-3 sm:p-4 align-middle sticky-col-cell border-r border-slate-200 text-center sm:text-left";
+            tdBloque.className = "p-2 sm:p-4 align-middle sticky-col-cell border-r border-slate-200 text-center sm:text-left min-w-[95px] sm:min-w-[170px]";
             tdBloque.innerHTML = `
                 <div class="flex items-center space-x-2">
-                    <span class="px-2.5 py-1 text-xs font-bold border rounded-lg uppercase tracking-wide ${bloqueBadgeColor}">${bloque.nombre_bloque}</span>
+                    <span class="px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-bold border rounded-lg uppercase tracking-wide ${bloqueBadgeColor}">${bloque.nombre_bloque}</span>
                 </div>
             `;
             tr.appendChild(tdBloque);
@@ -425,7 +425,7 @@ async function cargarCuadrante() {
             // 7 Días
             cuadranteData.dias.forEach(dia => {
                 const td = document.createElement("td");
-                td.className = `p-2.5 align-top border-r border-slate-100 min-w-[150px] ${dia.es_hoy ? 'bg-brand-50/20' : ''}`;
+                td.className = `p-2 sm:p-2.5 align-top border-r border-slate-100 min-w-[135px] sm:min-w-[160px] ${dia.es_hoy ? 'bg-brand-50/20' : ''}`;
 
                 let asigs = cuadranteData.matriz[bloque.id_bloque] && cuadranteData.matriz[bloque.id_bloque][dia.fecha];
                 if (asigs && !Array.isArray(asigs)) {
@@ -521,6 +521,11 @@ async function cargarCuadrante() {
             tbody.appendChild(tr);
         });
 
+        // En pantallas móviles (< 768px), centrar automáticamente el cuadrante en el día de hoy
+        if (window.innerWidth < 768) {
+            setTimeout(scrollCuadranteAHoy, 120);
+        }
+
     } catch (err) {
         tbody.innerHTML = `
             <tr>
@@ -532,6 +537,24 @@ async function cargarCuadrante() {
     }
 }
 
+
+
+/**
+ * Desplaza suavemente la tabla del cuadrante semanal hasta la columna del día de hoy (Optimización Mobile)
+ */
+function scrollCuadranteAHoy() {
+    const tableContainer = document.querySelector(".table-scroll-container");
+    const hoyTh = document.querySelector("#tablaCuadrante th.bg-brand-50, #tablaCuadrante th.ring-brand-400");
+    if (tableContainer && hoyTh) {
+        const stickyTh = document.querySelector(".sticky-col-header");
+        const stickyWidth = stickyTh ? stickyTh.offsetWidth : 95;
+        const targetScrollLeft = hoyTh.offsetLeft - stickyWidth - 8;
+        tableContainer.scrollTo({
+            left: Math.max(0, targetScrollLeft),
+            behavior: "smooth"
+        });
+    }
+}
 
 // --- CARGAR ACTIVIDADES MÉDICAS ---
 async function cargarActividades() {
@@ -4607,6 +4630,13 @@ async function openModalNotifHorario(canal = 'email') {
         await cargarCuadrante();
     }
 
+    if (!listaTratamientosCache || listaTratamientosCache.length === 0) {
+        if (typeof cargarMedicamentos === 'function') await cargarMedicamentos();
+    }
+    if (!listaActividadesCache || listaActividadesCache.length === 0) {
+        if (typeof cargarActividadesMedicas === 'function') await cargarActividadesMedicas();
+    }
+
     // Poblar días disponibles desde cuadranteData
     const diaSelect = document.getElementById("notifHorarioDiaSelect");
     if (diaSelect) {
@@ -4819,6 +4849,18 @@ function generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia) {
         msg += `\n🩺 *ACTIVIDADES MÉDICAS EN TURNO:*\n${actividadesTurno.join("\n")}\n`;
     }
 
+    // Pauta completa de medicamentos para el periodo (misma lógica robusta del botón de medicamentos)
+    const tomasPeriodo = (typeof obtenerTomasParaPeriodoJS === 'function') ? obtenerTomasParaPeriodoJS(periodo, fechaDia) : [];
+    msg += `\n💊 *PAUTA DE MEDICAMENTOS:*\n`;
+    if (tomasPeriodo && tomasPeriodo.length > 0) {
+        const medsAgrupados = formatearPautaMedicamentosJS(tomasPeriodo);
+        medsAgrupados.forEach((m, idx) => {
+            msg += `  ${idx + 1}. ${m.textoWhatsApp}\n`;
+        });
+    } else {
+        msg += `  No hay administración de medicamentos programada para este periodo.\n`;
+    }
+
     msg += `\n_Cada cuidador recibe exclusivamente la información de sus propios turnos asignados._`;
     return msg;
 }
@@ -4996,9 +5038,19 @@ async function ejecutarEnvioNotifHorario() {
                 tipo: periodo,
                 destinatario_tipo: destTipo,
                 id_cuidador: idCuidador ? parseInt(idCuidador, 10) : null,
-                destinatario_email: mailManual || null,
-                fecha: (periodo === "dia") ? fechaDia : formatDateIso(fechaActual || new Date())
+                destinatario_email: mailManual || null
             };
+
+            if (periodo === "dia") {
+                payload.fecha = fechaDia;
+            } else {
+                if (cuadranteData && cuadranteData.inicio_semana && cuadranteData.fin_semana) {
+                    payload.fecha_inicio = cuadranteData.inicio_semana;
+                    payload.fecha_fin = cuadranteData.fin_semana;
+                } else {
+                    payload.fecha = formatDateIso(fechaActual || new Date());
+                }
+            }
 
             const res = await fetch("/api/admin/notificaciones/enviar-email-horario", {
                 method: "POST",

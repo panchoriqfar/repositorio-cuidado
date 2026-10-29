@@ -166,3 +166,68 @@ def test_endpoint_enviar_email_horario(db_session):
         assert res["tipo"] == "semanal"
         assert res["enviados"] == 1
         assert mock_resend.called
+
+def test_horario_incluye_medicamentos_en_email(db_session):
+    """Verifica que en el envío de horario completo (semanal y diario), los correos incluyan la pauta de medicamentos."""
+    from app.models import TratamientoMedicamento, MedicamentoHorario
+    
+    lunes = date(2026, 10, 26)
+    domingo = date(2026, 11, 1)
+    bloque1 = db_session.query(BloqueTurno).filter_by(id_bloque=1).first()
+
+    # Turno de Claudia
+    asig1 = AsignacionTurno(id_cuidador=1, fecha=lunes, hora_inicio=time(8, 0), hora_fin=time(14, 0), id_bloque=1, bloque=bloque1)
+    db_session.add(asig1)
+
+    # Tratamiento con horarios en la semana
+    trat = TratamientoMedicamento(
+        id=50,
+        nombre_medicamento="Paracetamol 500mg",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    h1 = MedicamentoHorario(medicamento_id=50, dia=lunes, hora=time(8, 0))
+    h2 = MedicamentoHorario(medicamento_id=50, dia=lunes, hora=time(12, 0))
+    db_session.add_all([h1, h2])
+    db_session.commit()
+
+    with patch("app.email_service.enviar_email_via_resend") as mock_resend:
+        mock_resend.return_value = {"status": "success", "id": "res_med_horario"}
+
+        # Envío semanal con fecha_inicio y fecha_fin explícitos
+        res_sem = enviar_correos_horario_periodo(
+            db=db_session,
+            fecha_base=lunes,
+            tipo="semana",
+            destinatario_tipo="cuidador",
+            id_cuidador=1,
+            fecha_inicio=lunes,
+            fecha_fin=domingo
+        )
+        assert res_sem["enviados"] == 1
+        args, _ = mock_resend.call_args
+        # args: (destinatario, subject, texto, html)
+        texto_enviado = args[2]
+        html_enviado = args[3]
+        assert "Paracetamol 500mg" in texto_enviado
+        assert "Paracetamol 500mg" in html_enviado
+        assert "No tienes administración de medicamentos programada" not in texto_enviado
+
+        mock_resend.reset_mock()
+
+        # Envío diario
+        res_dia = enviar_correos_horario_periodo(
+            db=db_session,
+            fecha_base=lunes,
+            tipo="dia",
+            destinatario_tipo="cuidador",
+            id_cuidador=1
+        )
+        assert res_dia["enviados"] == 1
+        args_dia, _ = mock_resend.call_args
+        texto_dia = args_dia[2]
+        html_dia = args_dia[3]
+        assert "Paracetamol 500mg" in texto_dia
+        assert "Paracetamol 500mg" in html_dia

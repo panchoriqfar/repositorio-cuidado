@@ -4450,7 +4450,8 @@ function construirTextoActividadesWA(actividades, periodoTexto, nombreDest = "")
             let medInfo = "";
             if (act.medico_asignado) {
                 const nomMed = `${act.medico_asignado.nombre} ${act.medico_asignado.apellido || ''}`.trim();
-                medInfo = ` (A cargo: ${nomMed})`;
+                const espMed = act.medico_asignado.especialidad ? ` (${act.medico_asignado.especialidad})` : "";
+                medInfo = ` (A cargo: ${nomMed}${espMed})`;
             }
             const descInfo = act.descripcion ? ` - ${act.descripcion.trim()}` : "";
 
@@ -4899,8 +4900,18 @@ function generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia) {
                 return hAct >= j.inicio || hAct <= j.fin;
             });
             if (coincide) {
-                const nomMed = act.medico_asignado ? ` (A cargo: ${act.medico_asignado.nombre})` : "";
-                actividadesTurno.push(`  • *${act.titulo}* a las ${hAct} hrs${nomMed}`);
+                const fechaObj = new Date(act.fecha + "T00:00:00");
+                const diasSemana = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+                const diaSem = diasSemana[fechaObj.getDay()] || "";
+                let nomMed = "";
+                if (act.medico_asignado) {
+                    const nombreMed = `${act.medico_asignado.nombre} ${act.medico_asignado.apellido || ''}`.trim();
+                    const espMed = act.medico_asignado.especialidad ? ` (${act.medico_asignado.especialidad})` : "";
+                    nomMed = ` (A cargo: ${nombreMed}${espMed})`;
+                }
+                const descInfo = act.descripcion ? ` - ${act.descripcion.trim()}` : "";
+                const diaInfo = periodo === "semana" ? ` (${diaSem} ${formatFechaIsoVisual(act.fecha)})` : "";
+                actividadesTurno.push(`  • *${act.titulo}*${diaInfo} a las ${hAct} hrs${nomMed}${descInfo}`);
             }
         }
     });

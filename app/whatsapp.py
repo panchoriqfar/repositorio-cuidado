@@ -172,27 +172,30 @@ def build_whatsapp_message(
     # Detalle de Actividades Médicas
     if actividades:
         mensaje += "\n📋 *Actividades Médicas en tu Turno:*\n"
-        acts_agrupadas: Dict[str, Dict[str, Any]] = {}
+        acts_agrupadas: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
         for act in actividades:
             tit = act.titulo.strip()
-            if tit not in acts_agrupadas:
-                medico_info = ""
-                if act.medico_asignado:
-                    nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
-                    medico_info = f" (A cargo: {nombre_med})"
-                desc_info = f" - {act.descripcion.strip()}" if act.descripcion else ""
-                acts_agrupadas[tit] = {
+            medico_info = ""
+            if act.medico_asignado:
+                nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
+                esp_med = f" ({act.medico_asignado.especialidad.strip()})" if getattr(act.medico_asignado, "especialidad", None) else ""
+                medico_info = f" (A cargo: {nombre_med}{esp_med})"
+            desc_info = f" - {act.descripcion.strip()}" if act.descripcion else ""
+            clave = (tit, medico_info, desc_info)
+            if clave not in acts_agrupadas:
+                acts_agrupadas[clave] = {
                     "horas": [],
+                    "tit": tit,
                     "medico_info": medico_info,
                     "desc_info": desc_info
                 }
             h_str = act.hora.strftime("%H:%M")
-            if h_str not in acts_agrupadas[tit]["horas"]:
-                acts_agrupadas[tit]["horas"].append(h_str)
+            if h_str not in acts_agrupadas[clave]["horas"]:
+                acts_agrupadas[clave]["horas"].append(h_str)
 
-        for idx, (tit, data) in enumerate(acts_agrupadas.items(), 1):
+        for idx, (clave, data) in enumerate(acts_agrupadas.items(), 1):
             horas_str = ", ".join(data["horas"])
-            mensaje += f"  {idx}. *{tit}*: {horas_str} hrs{data['medico_info']}{data['desc_info']}\n"
+            mensaje += f"  {idx}. *{data['tit']}*: {horas_str} hrs{data['medico_info']}{data['desc_info']}\n"
     else:
         mensaje += "\n📋 *Actividades:* No tienes actividades médicas programadas durante tu horario de turno.\n"
 
@@ -283,20 +286,28 @@ def build_whatsapp_message_semanal(
 
         if acts_turno:
             mensaje += "   📋 *Actividades Médicas en tu Turno:*\n"
-            acts_agrupadas_sem: Dict[str, Dict[str, Any]] = {}
+            acts_agrupadas_sem: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
             for act in acts_turno:
                 tit = act.titulo.strip()
-                if tit not in acts_agrupadas_sem:
-                    med_info = ""
-                    if act.medico_asignado:
-                        nom_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
-                        med_info = f" (A cargo: {nom_med})"
-                    acts_agrupadas_sem[tit] = {"horas": [], "med_info": med_info}
+                med_info = ""
+                if act.medico_asignado:
+                    nom_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
+                    esp_med = f" ({act.medico_asignado.especialidad.strip()})" if getattr(act.medico_asignado, "especialidad", None) else ""
+                    med_info = f" (A cargo: {nom_med}{esp_med})"
+                desc_info = f" - {act.descripcion.strip()}" if act.descripcion else ""
+                clave = (tit, med_info, desc_info)
+                if clave not in acts_agrupadas_sem:
+                    acts_agrupadas_sem[clave] = {
+                        "horas": [],
+                        "tit": tit,
+                        "med_info": med_info,
+                        "desc_info": desc_info
+                    }
                 h_str = act.hora.strftime("%H:%M")
-                if h_str not in acts_agrupadas_sem[tit]["horas"]:
-                    acts_agrupadas_sem[tit]["horas"].append(h_str)
-            for idx, (tit, data) in enumerate(acts_agrupadas_sem.items(), 1):
-                mensaje += f"      {idx}. {tit}: {', '.join(data['horas'])} hrs{data['med_info']}\n"
+                if h_str not in acts_agrupadas_sem[clave]["horas"]:
+                    acts_agrupadas_sem[clave]["horas"].append(h_str)
+            for idx, (clave, data) in enumerate(acts_agrupadas_sem.items(), 1):
+                mensaje += f"      {idx}. *{data['tit']}*: {', '.join(data['horas'])} hrs{data['med_info']}{data['desc_info']}\n"
 
         mensaje += "\n"
 
@@ -334,6 +345,7 @@ def enviar_notificaciones_del_dia(
 
     actividades_dia: List[ActividadMedica] = (
         db.query(ActividadMedica)
+        .options(joinedload(ActividadMedica.medico_asignado))
         .filter(ActividadMedica.fecha.in_([fecha_seleccionada, dia_siguiente]))
         .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
         .all()

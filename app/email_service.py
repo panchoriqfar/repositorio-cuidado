@@ -183,29 +183,37 @@ def construir_contenido_diario(
         lineas_texto.append("")
 
     # Sección de Actividades Médicas
-    acts_agrupadas: Dict[str, Dict[str, Any]] = {}
+    acts_agrupadas: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     if actividades:
         lineas_texto.append("Tus actividades médicas programadas en el turno son:")
         for act in actividades:
             tit = act.titulo.strip()
-            if tit not in acts_agrupadas:
-                medico_info = ""
-                if act.medico_asignado:
-                    nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
-                    medico_info = f" (A cargo: {nombre_med})"
-                desc_info = f" - {act.descripcion.strip()}" if act.descripcion else ""
-                acts_agrupadas[tit] = {
+            medico_info = ""
+            nom_med_completo = ""
+            if act.medico_asignado:
+                nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
+                esp_med = f" ({act.medico_asignado.especialidad.strip()})" if getattr(act.medico_asignado, "especialidad", None) else ""
+                nom_med_completo = f"{nombre_med}{esp_med}"
+                medico_info = f" (A cargo: {nom_med_completo})"
+            desc_raw = act.descripcion.strip() if act.descripcion else ""
+            desc_info = f" - {desc_raw}" if desc_raw else ""
+            clave = (tit, medico_info, desc_raw)
+            if clave not in acts_agrupadas:
+                acts_agrupadas[clave] = {
                     "horas": [],
+                    "tit": tit,
                     "medico_info": medico_info,
+                    "nom_med": nom_med_completo,
+                    "desc_raw": desc_raw,
                     "desc_info": desc_info
                 }
             h_act = act.hora.strftime("%H:%M")
-            if h_act not in acts_agrupadas[tit]["horas"]:
-                acts_agrupadas[tit]["horas"].append(h_act)
+            if h_act not in acts_agrupadas[clave]["horas"]:
+                acts_agrupadas[clave]["horas"].append(h_act)
 
-        for tit, data in acts_agrupadas.items():
+        for clave, data in acts_agrupadas.items():
             horas_str = ", ".join(data["horas"])
-            lineas_texto.append(f"- {tit}: {horas_str} hrs{data['medico_info']}{data['desc_info']}.")
+            lineas_texto.append(f"- {data['tit']}: {horas_str} hrs{data['medico_info']}{data['desc_info']}.")
     else:
         lineas_texto.append("No tienes actividades médicas programadas durante tu horario de turno. ¡Que tengas un excelente turno!")
 
@@ -226,11 +234,11 @@ def construir_contenido_diario(
     actividades_html = ""
     if actividades:
         actividades_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
-        for tit, data in acts_agrupadas.items():
+        for clave, data in acts_agrupadas.items():
             horas_str = ", ".join(data["horas"])
-            medico_html = f" <span style='color: #64748b;'>&bull; {data['medico_info'].strip(' ()')}</span>" if data["medico_info"] else ""
-            desc_html = f" &bull; {data['desc_info'].replace(' - ', '')}" if data["desc_info"] else ""
-            actividades_html += f"<li><strong>{tit}</strong>: <strong>{horas_str} hrs</strong>{medico_html}{desc_html}</li>"
+            medico_html = f" &bull; <span style='color: #0f766e;'>Personal a cargo: <strong>{data['nom_med']}</strong></span>" if data["nom_med"] else ""
+            desc_html = f"<br><span style='color: #475569; font-size: 13px; margin-left: 10px;'>📝 <strong>Descripción:</strong> {data['desc_raw']}</span>" if data["desc_raw"] else ""
+            actividades_html += f"<li style='margin-bottom: 8px;'><strong>{data['tit']}</strong>: <strong>{horas_str} hrs</strong>{medico_html}{desc_html}</li>"
         actividades_html += "</ul>"
     else:
         actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes actividades médicas programadas durante tu horario de turno. ¡Que tengas un excelente turno!</p>"
@@ -356,19 +364,40 @@ def construir_contenido_semanal(
         lineas_texto.append("No tienes administración de medicamentos programada en tus turnos.")
         lineas_texto.append("")
 
-    acts_sem_map: Dict[Tuple[date, str], List[str]] = {}
+    acts_sem_map: Dict[Tuple[date, str, str, str], Dict[str, Any]] = {}
     if todas_actividades:
         lineas_texto.append("Tus actividades médicas programadas en turno son:")
         for fecha_act, act in todas_actividades:
             tit = act.titulo.strip()
+            med_info = ""
+            nom_med_completo = ""
+            if act.medico_asignado:
+                nom_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
+                esp_med = f" ({act.medico_asignado.especialidad.strip()})" if getattr(act.medico_asignado, "especialidad", None) else ""
+                nom_med_completo = f"{nom_med}{esp_med}"
+                med_info = f" (A cargo: {nom_med_completo})"
+            desc_raw = act.descripcion.strip() if act.descripcion else ""
+            desc_info = f" - {desc_raw}" if desc_raw else ""
+            clave = (fecha_act, tit, desc_raw, nom_med_completo)
+            if clave not in acts_sem_map:
+                acts_sem_map[clave] = {
+                    "fecha": fecha_act,
+                    "titulo": tit,
+                    "horas": [],
+                    "medico_info": med_info,
+                    "nom_med": nom_med_completo,
+                    "desc_raw": desc_raw,
+                    "desc_info": desc_info
+                }
             h_str = act.hora.strftime("%H:%M")
-            if h_str not in acts_sem_map.setdefault((fecha_act, tit), []):
-                acts_sem_map[(fecha_act, tit)].append(h_str)
+            if h_str not in acts_sem_map[clave]["horas"]:
+                acts_sem_map[clave]["horas"].append(h_str)
 
-        for (fecha_act, tit), h_list in acts_sem_map.items():
+        for clave, data in acts_sem_map.items():
+            fecha_act = data["fecha"]
             dia_nom = DIAS_ESPANOL.get(fecha_act.weekday(), "")
             f_str = f"{dia_nom} {fecha_act.strftime('%d/%m/%Y')}"
-            lineas_texto.append(f"- El día {f_str}: {tit} a las {', '.join(h_list)} hrs.")
+            lineas_texto.append(f"- El día {f_str}: {data['titulo']} a las {', '.join(data['horas'])} hrs{data['medico_info']}{data['desc_info']}.")
     else:
         lineas_texto.append("No tienes actividades médicas programadas en tus horarios de turno para esta semana.")
 
@@ -389,10 +418,14 @@ def construir_contenido_semanal(
     actividades_html = ""
     if todas_actividades:
         actividades_html = "<ul style='margin: 10px 0; padding-left: 20px; line-height: 1.6;'>"
-        for (fecha_act, tit), h_list in acts_sem_map.items():
+        for clave, data in acts_sem_map.items():
+            fecha_act = data["fecha"]
             dia_nom = DIAS_ESPANOL.get(fecha_act.weekday(), "")
             f_str = f"{dia_nom} {fecha_act.strftime('%d/%m/%Y')}"
-            actividades_html += f"<li>El día <strong>{f_str}</strong>: <strong>{tit}</strong> a las <strong>{', '.join(h_list)} hrs</strong></li>"
+            horas_str = ", ".join(data["horas"])
+            medico_html = f" &bull; <span style='color: #0f766e;'>Personal a cargo: <strong>{data['nom_med']}</strong></span>" if data["nom_med"] else ""
+            desc_html = f"<br><span style='color: #475569; font-size: 13px; margin-left: 10px;'>📝 <strong>Descripción:</strong> {data['desc_raw']}</span>" if data["desc_raw"] else ""
+            actividades_html += f"<li style='margin-bottom: 8px;'>El día <strong>{f_str}</strong>: <strong>{data['titulo']}</strong> a las <strong>{horas_str} hrs</strong>{medico_html}{desc_html}</li>"
         actividades_html += "</ul>"
     else:
         actividades_html = "<p style='color: #047857; background: #ecfdf5; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes actividades médicas programadas en tus horarios de turno para esta semana.</p>"
@@ -500,6 +533,7 @@ def enviar_correos_del_dia(fecha_objetivo: date, db: Session) -> Dict[str, Any]:
 
     actividades_dia: List[ActividadMedica] = (
         db.query(ActividadMedica)
+        .options(joinedload(ActividadMedica.medico_asignado))
         .filter(ActividadMedica.fecha.in_([fecha_objetivo, dia_siguiente]))
         .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
         .all()
@@ -937,7 +971,8 @@ def construir_contenido_solo_actividades(
             med_info = ""
             if act.medico_asignado:
                 nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
-                med_info = f" (A cargo: {nombre_med})"
+                esp_med = f" ({act.medico_asignado.especialidad.strip()})" if getattr(act.medico_asignado, "especialidad", None) else ""
+                med_info = f" (A cargo: {nombre_med}{esp_med})"
             desc_info = f" - {act.descripcion.strip()}" if act.descripcion else ""
             lineas_texto.append(f"{idx}. {act.titulo.strip()}: {f_str} a las {h_str} hrs{med_info}{desc_info}")
         lineas_texto.append("")
@@ -960,8 +995,9 @@ def construir_contenido_solo_actividades(
             medico_html = ""
             if act.medico_asignado:
                 nombre_med = f"{act.medico_asignado.nombre} {act.medico_asignado.apellido or ''}".strip()
-                medico_html = f" &bull; <span style='color: #0f766e;'>Personal a cargo: <strong>{nombre_med}</strong></span>"
-            desc_html = f"<br><span style='color: #475569; font-size: 13px;'>{act.descripcion.strip()}</span>" if act.descripcion else ""
+                esp_med = f" ({act.medico_asignado.especialidad.strip()})" if getattr(act.medico_asignado, "especialidad", None) else ""
+                medico_html = f" &bull; <span style='color: #0f766e;'>Personal a cargo: <strong>{nombre_med}{esp_med}</strong></span>"
+            desc_html = f"<br><span style='color: #475569; font-size: 13px;'>📝 <strong>Descripción:</strong> {act.descripcion.strip()}</span>" if act.descripcion else ""
             actividades_html += f"<li style='margin-bottom: 10px;'><strong>{act.titulo.strip()}</strong> &bull; <span style='color: #0d9488; font-weight: 600;'>{f_str} a las {h_str} hrs</span>{medico_html}{desc_html}</li>"
         actividades_html += "</ul></div>"
     else:
@@ -1012,6 +1048,7 @@ def enviar_correos_solo_actividades_periodo(
     """
     actividades = (
         db.query(ActividadMedica)
+        .options(joinedload(ActividadMedica.medico_asignado))
         .filter(
             ActividadMedica.fecha >= fecha_inicio,
             ActividadMedica.fecha <= fecha_fin
@@ -1173,6 +1210,7 @@ def enviar_correos_horario_periodo(
 
         actividades_dia: List[ActividadMedica] = (
             db.query(ActividadMedica)
+            .options(joinedload(ActividadMedica.medico_asignado))
             .filter(ActividadMedica.fecha.in_([fecha_objetivo, dia_siguiente]))
             .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
             .all()
@@ -1303,6 +1341,7 @@ def enviar_correos_horario_periodo(
 
         actividades = (
             db.query(ActividadMedica)
+            .options(joinedload(ActividadMedica.medico_asignado))
             .filter(
                 ActividadMedica.fecha >= inicio_semana,
                 ActividadMedica.fecha <= dia_extra

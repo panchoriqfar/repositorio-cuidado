@@ -192,3 +192,104 @@ def test_endpoint_enviar_email_actividades(db_session):
         res = enviar_email_actividades(payload=payload, current_user=admin_user, db=db_session)
         assert res["tipo"] == "actividades"
         assert res["enviados"] == 1
+
+
+def test_actividades_completas_en_horario_semanal_email_y_whatsapp(db_session):
+    """
+    Verifica que tanto en el mensaje del horario semanal por Email como por WhatsApp,
+    se envíe TODA la información de la actividad:
+    - Nombre de la actividad (título)
+    - Descripción de la actividad
+    - Médico asignado (con nombre y especialidad si lo hay)
+    """
+    from app.models import AsignacionTurno, BloqueTurno
+    from app.email_service import construir_contenido_semanal
+    from app.whatsapp import build_whatsapp_message_semanal
+
+    lunes = date(2026, 10, 26)
+    domingo = date(2026, 11, 1)
+
+    cuid = db_session.query(Cuidador).filter_by(id_cuidador=1).first()
+    medico = db_session.query(PersonalMedico).filter_by(id_medico=1).first()
+
+    bloque = BloqueTurno(id_bloque=10, codigo_bloque="AM", nombre_bloque="Mañana", hora_inicio=time(8, 0), hora_fin=time(14, 0))
+    db_session.add(bloque)
+    db_session.flush()
+
+    asig = AsignacionTurno(
+        id_asignacion=100,
+        id_cuidador=cuid.id_cuidador,
+        cuidador=cuid,
+        fecha=lunes,
+        hora_inicio=time(8, 0),
+        hora_fin=time(14, 0),
+        id_bloque=bloque.id_bloque,
+        bloque=bloque
+    )
+    db_session.add(asig)
+
+    actividad_con_medico = ActividadMedica(
+        id_actividad=50,
+        fecha=lunes,
+        hora=time(10, 0),
+        titulo="Curación y cambio de apósitos",
+        descripcion="Limpieza de herida quirúrgica con suero fisiológico",
+        id_medico=medico.id_medico,
+        medico_asignado=medico
+    )
+    actividad_sin_medico = ActividadMedica(
+        id_actividad=51,
+        fecha=lunes,
+        hora=time(12, 0),
+        titulo="Kinesiología respiratoria",
+        descripcion="Ejercicios de expansión torácica y nebulización",
+        id_medico=None,
+        medico_asignado=None
+    )
+    db_session.add_all([actividad_con_medico, actividad_sin_medico])
+    db_session.commit()
+
+    actividades_por_fecha = {
+        lunes: [actividad_con_medico, actividad_sin_medico]
+    }
+
+    # 1. Probar Mensaje Semanal por Correo Electrónico
+    asunto, texto_email, html_email = construir_contenido_semanal(
+        cuidador=cuid,
+        asignaciones=[asig],
+        actividades_por_fecha=actividades_por_fecha,
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha={}
+    )
+
+    # Debe contener nombre actividad, médico con especialidad y descripción completa
+    assert "Curación y cambio de apósitos" in texto_email
+    assert "A cargo: Dr. Carlos Gómez (Geriatría)" in texto_email
+    assert "Limpieza de herida quirúrgica con suero fisiológico" in texto_email
+
+    assert "Kinesiología respiratoria" in texto_email
+    assert "Ejercicios de expansión torácica y nebulización" in texto_email
+
+    # HTML debe contener toda la información
+    assert "Curación y cambio de apósitos" in html_email
+    assert "Dr. Carlos Gómez (Geriatría)" in html_email
+    assert "Limpieza de herida quirúrgica con suero fisiológico" in html_email
+    assert "Kinesiología respiratoria" in html_email
+    assert "Ejercicios de expansión torácica y nebulización" in html_email
+
+    # 2. Probar Mensaje Semanal por WhatsApp
+    msg_wa = build_whatsapp_message_semanal(
+        cuidador=cuid,
+        asignaciones=[asig],
+        actividades_por_fecha=actividades_por_fecha,
+        inicio_semana=lunes,
+        fin_semana=domingo,
+        medicamentos_por_fecha={}
+    )
+
+    assert "*Curación y cambio de apósitos*" in msg_wa
+    assert "A cargo: Dr. Carlos Gómez (Geriatría)" in msg_wa
+    assert "Limpieza de herida quirúrgica con suero fisiológico" in msg_wa
+    assert "*Kinesiología respiratoria*" in msg_wa
+    assert "Ejercicios de expansión torácica y nebulización" in msg_wa

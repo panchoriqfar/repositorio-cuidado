@@ -698,6 +698,7 @@ def obtener_actividades_semana(
 
     actividades = (
         db.query(ActividadMedica)
+        .options(joinedload(ActividadMedica.medico_asignado))
         .filter(ActividadMedica.fecha >= inicio_semana, ActividadMedica.fecha <= fin_semana)
         .order_by(ActividadMedica.fecha.asc(), ActividadMedica.hora.asc())
         .all()

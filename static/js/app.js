@@ -1589,9 +1589,6 @@ function generarYEnviarWAIndividual() {
                 if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
                     if (!diasSemanaTrat.has(dayOfWeek)) return;
                 }
-                if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
-                    if (!diasSemanaTrat.has(dayOfWeek)) return;
-                }
 
                 const previos = (trat.horarios || [])
                     .filter(h => h.dia <= d.fecha)
@@ -3986,7 +3983,11 @@ function openModalNotifMedicamentos(canal = 'whatsapp') {
     }
 
     cambiarCanalNotifMedicamentos(canal);
-    actualizarVistaPreviaNotifMedicamentos();
+    try {
+        actualizarVistaPreviaNotifMedicamentos();
+    } catch (err) {
+        console.error("Error al actualizar vista previa de medicamentos:", err);
+    }
 
     modal.classList.remove("hidden");
 }
@@ -4112,9 +4113,6 @@ function obtenerTomasParaPeriodoJS(periodo, fechaDia) {
                 if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
                     if (!diasSemanaTrat.has(dayOfWeek)) return;
                 }
-                if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
-                    if (!diasSemanaTrat.has(dayOfWeek)) return;
-                }
 
                 const previos = (trat.horarios || [])
                     .filter(h => h.dia <= d.fecha)
@@ -4148,7 +4146,7 @@ function obtenerTomasParaPeriodoJS(periodo, fechaDia) {
     return tomas;
 }
 
-function construirTextoPautaMedicamentosWA(tomas, periodoTexto, nombreDest = "") {
+function construirTextoPautaMedicamentosWA(tomas, periodoTexto, nombreDest = "", periodo = "semana") {
     let msg = `🏥 *SISTEMA DE GESTIÓN DE CUIDADOS*\n`;
     msg += `💊 *PAUTA Y HORARIOS DE MEDICAMENTOS*\n`;
     msg += `🗓️ *Periodo:* ${periodoTexto}\n\n`;
@@ -4223,7 +4221,7 @@ function actualizarVistaPreviaNotifMedicamentos() {
     }
 
     const tomas = obtenerTomasParaPeriodoJS(periodo, fechaDia);
-    const textoMsg = construirTextoPautaMedicamentosWA(tomas, periodoTexto, nombreDest);
+    const textoMsg = construirTextoPautaMedicamentosWA(tomas, periodoTexto, nombreDest, periodo);
 
     const contPreview = document.getElementById("notifMedVistaPrevia");
     if (contPreview) {

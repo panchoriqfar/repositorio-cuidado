@@ -1064,6 +1064,8 @@ def consultar_pauta_medicamentos(
             horarios_dia = [h for h in t.horarios if h.dia == fecha]
             if not horarios_dia and fecha >= t.dia_inicial:
                 dias_sem_t = {h.dia.weekday() for h in t.horarios if getattr(h, "dia", None)}
+                if len(dias_sem_t) >= 3 and len(dias_sem_t) < 7 and fecha.weekday() not in dias_sem_t:
+                    continue
                 if {0, 1, 2, 3, 4}.issubset(dias_sem_t) and 5 not in dias_sem_t and 6 not in dias_sem_t and fecha.weekday() in [5, 6]:
                     continue
                 if {0, 1, 2, 3, 4, 5}.issubset(dias_sem_t) and 6 not in dias_sem_t and fecha.weekday() == 6:
@@ -1125,6 +1127,8 @@ def listar_todos_tratamientos(
             horarios_dia = [h for h in t.horarios if h.dia == fecha]
             if not horarios_dia and fecha >= t.dia_inicial:
                 dias_sem_t = {h.dia.weekday() for h in t.horarios if getattr(h, "dia", None)}
+                if len(dias_sem_t) >= 3 and len(dias_sem_t) < 7 and fecha.weekday() not in dias_sem_t:
+                    continue
                 if {0, 1, 2, 3, 4}.issubset(dias_sem_t) and 5 not in dias_sem_t and 6 not in dias_sem_t and fecha.weekday() in [5, 6]:
                     continue
                 if {0, 1, 2, 3, 4, 5}.issubset(dias_sem_t) and 6 not in dias_sem_t and fecha.weekday() == 6:

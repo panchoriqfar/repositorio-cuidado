@@ -21,6 +21,7 @@ from app.medicamentos_service import (
     esta_en_jornada_asig,
     corresponde_medicamento_a_cuidador,
     formatear_pauta_medicamentos,
+    formatear_pauta_medicamentos_por_dia,
 )
 
 # ---------------------------------------------------------------------------
@@ -311,16 +312,13 @@ def build_whatsapp_message_semanal(
 
         mensaje += "\n"
 
-    # Sección consolidada y agrupada de medicamentos para toda la semana
-    mensaje += "💊 *PAUTA DE MEDICAMENTOS DE LA SEMANA:*\n"
+    # Sección consolidada y agrupada de medicamentos para toda la semana (organizada por día)
+    mensaje += "💊 *PAUTA DE MEDICAMENTOS DE LA SEMANA:\n\n"
     if meds_semana_todos:
-        meds_fmt = formatear_pauta_medicamentos(meds_semana_todos)
-        for idx, item in enumerate(meds_fmt, 1):
-            mensaje += f"  {idx}. {item['texto_whatsapp']}\n"
+        fmt_por_dia = formatear_pauta_medicamentos_por_dia(meds_semana_todos)
+        mensaje += fmt_por_dia["texto_whatsapp"] + "\n\n"
     else:
-        mensaje += "  • No tienes administración de medicamentos programada en tus turnos.\n"
-    mensaje += "\n"
-
+        mensaje += "  • No tienes administración de medicamentos programada en tus turnos.\n\n"
     mensaje += "_Por favor confirma la recepción de tu cronograma semanal. ¡Muchas gracias!_"
     return mensaje
 

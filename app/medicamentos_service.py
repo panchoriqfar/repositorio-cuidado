@@ -193,6 +193,10 @@ def obtener_medicamentos_programados(
             {5, 6}.issubset(dias_semana_expl)
             and not any(w in dias_semana_expl for w in [0, 1, 2, 3, 4])
         )
+        es_jueves_a_sabado = (
+            {3, 4, 5}.issubset(dias_semana_expl)
+            and not any(w in dias_semana_expl for w in [0, 1, 2, 6])
+        )
 
         # Simular cronológicamente día a día hasta f_fin para mantener el estado exacto de horas activas
         dias_a_recorrer = (f_fin - dia_origen).days + 1
@@ -215,6 +219,11 @@ def obtener_medicamentos_programados(
                     continue
                 if es_solo_fin_de_semana and curr_date.weekday() in [0, 1, 2, 3, 4]:
                     continue
+                if es_jueves_a_sabado and curr_date.weekday() not in [3, 4, 5]:
+                    continue
+                if len(dias_semana_expl) >= 3 and len(dias_semana_expl) < 7:
+                    if curr_date.weekday() not in dias_semana_expl:
+                        continue
 
                 if curr_date in explicit_por_fecha:
                     for h in sorted(explicit_por_fecha[curr_date], key=lambda x: to_time_obj(x.hora) or time(0, 0)):
@@ -419,3 +428,135 @@ def formatear_pauta_medicamentos(
 
     return resultado
 
+
+
+
+def formatear_pauta_medicamentos_por_dia(
+    tomas: List[Union[TomaMedicamento, MedicamentoHorario, Any]]
+) -> Dict[str, Any]:
+    """
+    Agrupa y formatea la pauta de tomas de medicamentos organizada por DIA (+Lunes+, +Martes+, etc.):
+
+    +Lunes+
+      • *Medicamento A*: a las 08:00 y 20:00 hrs (Indicado por: Dra. Andrea Silva)
+      • *Medicamento B*: a las 12:00 hrs
+
+    +Martes+
+      • *Medicamento A*: a las 08:00 y 20:00 hrs (Indicado por: Dra. Andrea Silva)
+
+    Retorna un diccionario estructurado con:
+    - 'por_dia': lista estructurada dia por dia
+    - 'texto_whatsapp': texto formateado con negritas y +Dia+
+    - 'texto_plano': texto plano con vinetas y +Dia+
+    - 'texto_html': HTML estructurado con encabezados y listas
+    """
+    if not tomas:
+        return {
+            "por_dia": [],
+            "texto_whatsapp": "",
+            "texto_plano": "",
+            "texto_html": ""
+        }
+
+    # 1. Agrupar tomas por fecha
+    dias_map: Dict[date, Dict[str, Dict[str, Any]]] = {}
+    for t in tomas:
+        d_obj = to_date_obj(t.dia) or (t.dia if isinstance(t.dia, date) else None)
+        if not d_obj:
+            try:
+                d_obj = date.fromisoformat(str(t.dia).split("T")[0])
+            except Exception:
+                continue
+
+        nom = t.tratamiento.nombre_medicamento if getattr(t, "tratamiento", None) else "Medicamento"
+        medico_nom = ""
+        if getattr(t, "tratamiento", None) and getattr(t.tratamiento, "personal_medico", None):
+            pm = t.tratamiento.personal_medico
+            medico_nom = f"{pm.nombre} {pm.apellido or ''}".strip()
+
+        h_obj = to_time_obj(t.hora) or (t.hora if isinstance(t.hora, time) else None)
+        h_str = h_obj.strftime("%H:%M") if hasattr(h_obj, "strftime") else str(t.hora)[:5]
+
+        if d_obj not in dias_map:
+            dias_map[d_obj] = {}
+
+        if nom not in dias_map[d_obj]:
+            dias_map[d_obj][nom] = {
+                "medico": medico_nom,
+                "horas": set()
+            }
+        elif medico_nom and not dias_map[d_obj][nom]["medico"]:
+            dias_map[d_obj][nom]["medico"] = medico_nom
+
+        dias_map[d_obj][nom]["horas"].add(h_str)
+
+    por_dia_lista = []
+    bloques_wa = []
+    bloques_plano = []
+    bloques_html = []
+
+    for d_obj in sorted(dias_map.keys()):
+        dia_nom = DIAS_SEMANA_ORDEN[d_obj.weekday()]
+        meds_dia = dias_map[d_obj]
+        if not meds_dia:
+            continue
+
+        dia_item = {
+            "fecha": d_obj,
+            "dia_nombre": dia_nom,
+            "medicamentos": []
+        }
+
+        lineas_med_wa = []
+        lineas_med_plano = []
+        lineas_med_html = []
+
+        for nom in sorted(meds_dia.keys()):
+            info = meds_dia[nom]
+            horas_ord = sorted(list(info["horas"]))
+            str_horas = format_horas_espanol(horas_ord)
+            med_info_wa = f" (Indicado por: {info['medico']})" if info["medico"] else ""
+            med_info_plano = f" - Indicado por: {info['medico']}" if info["medico"] else ""
+            med_info_html = f" <span style='color: #64748b;'>&bull; Indicado por: {info['medico']}</span>" if info["medico"] else ""
+
+            txt_wa = f"  • *{nom}*: {str_horas}{med_info_wa}"
+            txt_plano = f"  • {nom}: {str_horas}{med_info_plano}"
+            txt_html = f"<li style='margin-bottom: 6px;'><strong>{nom}</strong>: {str_horas}{med_info_html}</li>"
+
+            lineas_med_wa.append(txt_wa)
+            lineas_med_plano.append(txt_plano)
+            lineas_med_html.append(txt_html)
+
+            dia_item["medicamentos"].append({
+                "nombre": nom,
+                "medico": info["medico"],
+                "horas": horas_ord,
+                "horas_str": str_horas,
+                "texto_whatsapp": txt_wa,
+                "texto_plano": txt_plano,
+                "texto_html": txt_html
+            })
+
+        por_dia_lista.append(dia_item)
+
+        # Bloque WhatsApp
+        header_wa = "+" + dia_nom + "+"
+        bloques_wa.append(header_wa + "\n" + "\n".join(lineas_med_wa))
+        # Bloque Texto Plano
+        header_plano = "+" + dia_nom + "+"
+        bloques_plano.append(header_plano + "\n" + "\n".join(lineas_med_plano))
+        # Bloque HTML
+        bloques_html.append(
+            f"<div style='margin-bottom: 12px;'>"
+            f"<p style='margin: 8px 0 4px; font-weight: bold; color: #0369a1;'>+{dia_nom}+</p>"
+            f"<ul style='margin: 0; padding-left: 20px; line-height: 1.6;'>"
+            + "".join(lineas_med_html) +
+            f"</ul></div>"
+        )
+
+    return {
+        "por_dia": por_dia_lista,
+        "texto_whatsapp": "\n\n".join(bloques_wa),
+        "texto_plano": "\n\n".join(bloques_plano),
+        "texto_html": "".join(bloques_html)
+    }

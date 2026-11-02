@@ -595,7 +595,7 @@ def test_formato_agrupado_ejemplo_usuario(db_session):
     assert "*Amlodipino*: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in item_med["texto_whatsapp"]
     assert "<strong>Amlodipino</strong>: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in item_med["texto_html"]
 
-    # 3. Verificar en Correo Semanal
+    # 3. Verificar en Correo Semanal (Formato organizado por día +Lunes+, +Martes+, etc.)
     meds_por_fecha = {}
     for t in tomas_semana:
         meds_por_fecha.setdefault(t.dia, []).append(t)
@@ -608,10 +608,14 @@ def test_formato_agrupado_ejemplo_usuario(db_session):
         fin_semana=domingo,
         medicamentos_por_fecha=meds_por_fecha
     )
-    assert "Amlodipino: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in texto_sem
-    assert "<strong>Amlodipino</strong>: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in html_sem
+    assert "+Lunes+" in texto_sem
+    assert "Amlodipino: a las 16:00 y 23:59 hrs" in texto_sem
+    assert "+Martes+" in texto_sem
+    assert "Amlodipino: a las 12:00, 16:00 y 23:59 hrs" in texto_sem
+    assert "+Lunes+" in html_sem
+    assert "Amlodipino</strong>: a las 16:00 y 23:59 hrs" in html_sem
 
-    # 4. Verificar en WhatsApp Semanal
+    # 4. Verificar en WhatsApp Semanal (Formato organizado por día +Lunes+, +Martes+, etc.)
     msg_wa_sem = build_whatsapp_message_semanal(
         cuidador=cuid,
         asignaciones=asigs_semana,
@@ -620,7 +624,10 @@ def test_formato_agrupado_ejemplo_usuario(db_session):
         fin_semana=domingo,
         medicamentos_por_fecha=meds_por_fecha
     )
-    assert "*Amlodipino*: Lunes a las 16:00 y 23:59 hrs; de Martes a Domingo a las 12:00, 16:00 y 23:59 hrs" in msg_wa_sem
+    assert "+Lunes+" in msg_wa_sem
+    assert "*Amlodipino*: a las 16:00 y 23:59 hrs" in msg_wa_sem
+    assert "+Martes+" in msg_wa_sem
+    assert "*Amlodipino*: a las 12:00, 16:00 y 23:59 hrs" in msg_wa_sem
 
     # 5. Verificar en Correo y WhatsApp Diario (Día Lunes)
     tomas_lunes = [t for t in tomas_semana if t.dia == lunes]
@@ -764,7 +771,7 @@ def test_pauta_semanal_completa_sin_recortar_dias_sin_turno(db_session):
     for t in tomas_semana:
         meds_por_fecha.setdefault(t.dia, []).append(t)
 
-    # 1. Probar Correo Semanal
+    # 1. Probar Correo Semanal (Agrupado por día: incluye todos los días Lunes a Sábado sin omitir días sin turno)
     asunto, texto_sem, html_sem = construir_contenido_semanal(
         cuidador=cuid,
         asignaciones=asigs_claudia,
@@ -773,9 +780,11 @@ def test_pauta_semanal_completa_sin_recortar_dias_sin_turno(db_session):
         fin_semana=sabado,
         medicamentos_por_fecha=meds_por_fecha
     )
-    # Debe decir 'de Lunes a Sábado' y NO omitir Jueves ni Viernes
-    assert "Amlodipino: de Lunes a Sábado a las 08:00 y 20:00 hrs" in texto_sem
-    assert "de Lunes a Miércoles y Sábado" not in texto_sem
+    # Debe incluir +Lunes+, +Jueves+, +Viernes+ y +Sábado+
+    assert "+Lunes+" in texto_sem
+    assert "+Jueves+" in texto_sem
+    assert "+Viernes+" in texto_sem
+    assert "+Sábado+" in texto_sem
 
     # 2. Probar WhatsApp Semanal
     msg_wa_sem = build_whatsapp_message_semanal(
@@ -786,8 +795,11 @@ def test_pauta_semanal_completa_sin_recortar_dias_sin_turno(db_session):
         fin_semana=sabado,
         medicamentos_por_fecha=meds_por_fecha
     )
-    assert "*Amlodipino*: de Lunes a Sábado a las 08:00 y 20:00 hrs" in msg_wa_sem
-    assert "de Lunes a Miércoles y Sábado" not in msg_wa_sem
+    assert "+Lunes+" in msg_wa_sem
+    assert "+Jueves+" in msg_wa_sem
+    assert "+Viernes+" in msg_wa_sem
+    assert "+Sábado+" in msg_wa_sem
+    assert "*Amlodipino*: a las 08:00 y 20:00 hrs" in msg_wa_sem
 
 
 def test_medicamento_lunes_a_viernes_no_se_arrastra_a_fin_de_semana(db_session):
@@ -843,3 +855,58 @@ def test_medicamento_lunes_a_viernes_no_se_arrastra_a_fin_de_semana(db_session):
     assert "de Lunes a Viernes a las 08:00 hrs" in texto_wa
     assert "Domingo" not in texto_pauta
     assert "Sábado" not in texto_pauta
+
+
+
+def test_medicamento_jueves_a_sabado_por_dia(db_session):
+    """
+    Verifica que un medicamento programado de Jueves a Sábado:
+    1. Genere tomas exclusivamente los días Jueves, Viernes y Sábado.
+    2. NO genere tomas en Domingo, Lunes, Martes ni Miércoles por arrastre.
+    3. En el formateo por día, aparezca exclusivamente bajo +Jueves+, +Viernes+ y +Sábado+.
+    """
+    from app.medicamentos_service import formatear_pauta_medicamentos_por_dia
+
+    lunes = date(2026, 10, 26)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=600,
+        personal_medico_id=1,
+        nombre_medicamento="Omeprazol 20mg",
+        dia_inicial=lunes + timedelta(days=3) # Jueves
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    # Jueves (3), Viernes (4), Sábado (5) a las 07:00
+    jueves = lunes + timedelta(days=3)
+    viernes = lunes + timedelta(days=4)
+    sabado = lunes + timedelta(days=5)
+
+    h_jue = MedicamentoHorario(medicamento_id=600, dia=jueves, hora=time(7, 0))
+    h_vie = MedicamentoHorario(medicamento_id=600, dia=viernes, hora=time(7, 0))
+    h_sab = MedicamentoHorario(medicamento_id=600, dia=sabado, hora=time(7, 0))
+    db_session.add_all([h_jue, h_vie, h_sab])
+    db_session.commit()
+
+    # Consultar toda la semana
+    tomas = obtener_medicamentos_programados(db_session, lunes, domingo)
+    tomas_omeprazol = [t for t in tomas if t.tratamiento.id == 600]
+
+    dias_con_toma = {t.dia for t in tomas_omeprazol}
+    assert dias_con_toma == {jueves, viernes, sabado}
+
+    # Formatear por día
+    fmt_dias = formatear_pauta_medicamentos_por_dia(tomas_omeprazol)
+    txt_wa = fmt_dias["texto_whatsapp"]
+
+    assert "+Jueves+" in txt_wa
+    assert "+Viernes+" in txt_wa
+    assert "+Sábado+" in txt_wa
+    assert "*Omeprazol 20mg*: a las 07:00 hrs" in txt_wa
+
+    assert "+Lunes+" not in txt_wa
+    assert "+Martes+" not in txt_wa
+    assert "+Miércoles+" not in txt_wa
+    assert "+Domingo+" not in txt_wa

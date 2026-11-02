@@ -20,6 +20,7 @@ from app.medicamentos_service import (
     esta_en_jornada_asig,
     corresponde_medicamento_a_cuidador,
     formatear_pauta_medicamentos,
+    formatear_pauta_medicamentos_por_dia,
     to_date_obj,
 )
 
@@ -342,7 +343,7 @@ def construir_contenido_semanal(
                 if d_obj is None or (inicio_semana <= d_obj <= fin_semana):
                     tomas_semana.append(m)
 
-    meds_fmt_sem = formatear_pauta_medicamentos(tomas_semana) if tomas_semana else []
+    meds_fmt_sem = formatear_pauta_medicamentos_por_dia(tomas_semana) if tomas_semana else None
 
     rango_str = f"{inicio_semana.strftime('%d/%m/%Y')} al {fin_semana.strftime('%d/%m/%Y')}"
     hora_actual = datetime.now().strftime("%H:%M:%S")
@@ -354,11 +355,10 @@ def construir_contenido_semanal(
         ""
     ]
 
-    # Pauta de medicamentos agrupada para toda la semana
-    if meds_fmt_sem:
+    # Pauta de medicamentos agrupada por día para toda la semana
+    if meds_fmt_sem and meds_fmt_sem["por_dia"]:
         lineas_texto.append("Medicamentos a administrar:")
-        for item in meds_fmt_sem:
-            lineas_texto.append(f"- {item['texto_plano']}")
+        lineas_texto.append(meds_fmt_sem["texto_plano"])
         lineas_texto.append("")
     else:
         lineas_texto.append("No tienes administración de medicamentos programada en tus turnos.")
@@ -406,12 +406,8 @@ def construir_contenido_semanal(
     dias_items_html = "".join([f"<li style='margin-bottom: 6px;'>{item}</li>" for item in dias_bloques_list])
 
     medicamentos_html = ""
-    if meds_fmt_sem:
-        medicamentos_html = "<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin: 16px 0;'>"
-        medicamentos_html += "<ul style='margin: 0; padding-left: 20px; line-height: 1.7;'>"
-        for item in meds_fmt_sem:
-            medicamentos_html += f"<li style='margin-bottom: 8px;'>{item['texto_html']}</li>"
-        medicamentos_html += "</ul></div>"
+    if meds_fmt_sem and meds_fmt_sem["por_dia"]:
+        medicamentos_html = f"<div style='background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin: 16px 0;'>{meds_fmt_sem['texto_html']}</div>"
     else:
         medicamentos_html = "<p style='color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 12px 0;'>No tienes administración de medicamentos programada en tus turnos.</p>"
 

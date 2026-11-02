@@ -1347,6 +1347,60 @@ function formatGrupoDiasJS(diasArr) {
     return `${prev} y ${ult}`;
 }
 
+function formatearPautaMedicamentosPorDiaJS(medsLista) {
+    if (!medsLista || medsLista.length === 0) return "";
+    const porFecha = {};
+    medsLista.forEach(m => {
+        const fStr = m.diaFecha;
+        if (!fStr) return;
+        if (!porFecha[fStr]) {
+            porFecha[fStr] = {
+                nombreDia: m.diaNombre || "",
+                meds: {}
+            };
+        }
+        const nom = m.nombre || "Medicamento";
+        if (!porFecha[fStr].meds[nom]) {
+            porFecha[fStr].meds[nom] = {
+                horas: new Set(),
+                medico: m.medico || ""
+            };
+        } else if (m.medico && !porFecha[fStr].meds[nom].medico) {
+            porFecha[fStr].meds[nom].medico = m.medico;
+        }
+        (m.horas || []).forEach(h => porFecha[fStr].meds[nom].horas.add(h));
+    });
+
+    const bloques = [];
+    const fechasOrdenadas = Object.keys(porFecha).sort();
+    fechasOrdenadas.forEach(fStr => {
+        const itemDia = porFecha[fStr];
+        let diaNom = itemDia.nombreDia;
+        if (!diaNom) {
+            const partesFecha = fStr.split("-").map(Number);
+            const dt = new Date(partesFecha[0], partesFecha[1] - 1, partesFecha[2]);
+            const diaIndex = (dt.getDay() + 6) % 7;
+            diaNom = (cuadranteData?.dias || []).find(d => d.fecha === fStr)?.nombre || DIAS_SEMANA_ORDEN_JS[diaIndex];
+        }
+
+        const lineasMeds = [];
+        const nombresMeds = Object.keys(itemDia.meds).sort();
+        nombresMeds.forEach(nom => {
+            const medInfo = itemDia.meds[nom];
+            const horasArr = Array.from(medInfo.horas).sort();
+            const horasStr = formatHorasEspanolJS(horasArr);
+            const docInfo = medInfo.medico ? ` _(Indicado por: ${medInfo.medico})_` : "";
+            lineasMeds.push(`  • *${nom}*: ${horasStr}${docInfo}`);
+        });
+
+        if (lineasMeds.length > 0) {
+            bloques.push(`+${diaNom}+\n` + lineasMeds.join("\n"));
+        }
+    });
+
+    return bloques.join("\n\n");
+}
+
 function formatearPautaMedicamentosJS(medsLista) {
     if (!medsLista || medsLista.length === 0) return [];
     const medsMap = {};
@@ -1532,6 +1586,12 @@ function generarYEnviarWAIndividual() {
                 if (esLunesASabado && dayOfWeek === 0) {
                     return; // No arrastrar a domingo para medicamentos de lunes a sábado
                 }
+                if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
+                    if (!diasSemanaTrat.has(dayOfWeek)) return;
+                }
+                if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
+                    if (!diasSemanaTrat.has(dayOfWeek)) return;
+                }
 
                 const previos = (trat.horarios || [])
                     .filter(h => h.dia <= d.fecha)
@@ -1615,13 +1675,18 @@ function generarYEnviarWAIndividual() {
     });
     msg += `\n`;
 
-    // 💊 SUS MEDICAMENTOS (PAUTA AGRUPADA FLUIDA)
+    // 💊 SUS MEDICAMENTOS (PAUTA AGRUPADA ORGANIZADA POR DÍA)
     msg += `💊 *SUS MEDICAMENTOS:*\n`;
     if (medicamentosEncontrados.length > 0) {
-        const medsAgrupados = formatearPautaMedicamentosJS(medicamentosEncontrados);
-        medsAgrupados.forEach((m, i) => {
-            msg += `  ${i + 1}. ${m.textoWhatsApp}\n`;
-        });
+        const uniqueDates = new Set(medicamentosEncontrados.map(m => m.diaFecha));
+        if (uniqueDates.size > 1) {
+            msg += "\n" + formatearPautaMedicamentosPorDiaJS(medicamentosEncontrados) + "\n";
+        } else {
+            const medsAgrupados = formatearPautaMedicamentosJS(medicamentosEncontrados);
+            medsAgrupados.forEach((m, i) => {
+                msg += `  ${i + 1}. ${m.textoWhatsApp}\n`;
+            });
+        }
     } else {
         msg += `  • No tienes administración de medicamentos programada para tu jornada.\n`;
     }
@@ -4044,6 +4109,12 @@ function obtenerTomasParaPeriodoJS(periodo, fechaDia) {
                 if (esLunesASabado && dayOfWeek === 0) {
                     return; // No arrastrar a domingo para medicamentos de lunes a sábado
                 }
+                if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
+                    if (!diasSemanaTrat.has(dayOfWeek)) return;
+                }
+                if (diasSemanaTrat.size >= 3 && diasSemanaTrat.size < 7) {
+                    if (!diasSemanaTrat.has(dayOfWeek)) return;
+                }
 
                 const previos = (trat.horarios || [])
                     .filter(h => h.dia <= d.fecha)
@@ -4089,10 +4160,14 @@ function construirTextoPautaMedicamentosWA(tomas, periodoTexto, nombreDest = "")
 
     msg += `💊 *MEDICAMENTOS:*\n`;
     if (tomas && tomas.length > 0) {
-        const medsAgrupados = formatearPautaMedicamentosJS(tomas);
-        medsAgrupados.forEach((m, idx) => {
-            msg += `  ${idx + 1}. ${m.textoWhatsApp}\n`;
-        });
+        if (periodo === "semana") {
+            msg += "\n" + formatearPautaMedicamentosPorDiaJS(tomas) + "\n";
+        } else {
+            const medsAgrupados = formatearPautaMedicamentosJS(tomas);
+            medsAgrupados.forEach((m, idx) => {
+                msg += `  ${idx + 1}. ${m.textoWhatsApp}\n`;
+            });
+        }
     } else {
         msg += `  • No hay medicamentos programados para este periodo.\n`;
     }
@@ -4952,14 +5027,18 @@ function generarTextoHorarioCuidadorJS(cuid, periodo, fechaDia) {
         msg += `\n🩺 *ACTIVIDADES MÉDICAS EN TURNO:*\n${actividadesTurno.join("\n")}\n`;
     }
 
-    // Pauta completa de medicamentos para el periodo (misma lógica robusta del botón de medicamentos)
+    // Pauta completa de medicamentos para el periodo (organizada por día si es semana)
     const tomasPeriodo = (typeof obtenerTomasParaPeriodoJS === 'function') ? obtenerTomasParaPeriodoJS(periodo, fechaDia) : [];
     msg += `\n💊 *PAUTA DE MEDICAMENTOS:*\n`;
     if (tomasPeriodo && tomasPeriodo.length > 0) {
-        const medsAgrupados = formatearPautaMedicamentosJS(tomasPeriodo);
-        medsAgrupados.forEach((m, idx) => {
-            msg += `  ${idx + 1}. ${m.textoWhatsApp}\n`;
-        });
+        if (periodo === "semana") {
+            msg += "\n" + formatearPautaMedicamentosPorDiaJS(tomasPeriodo) + "\n";
+        } else {
+            const medsAgrupados = formatearPautaMedicamentosJS(tomasPeriodo);
+            medsAgrupados.forEach((m, idx) => {
+                msg += `  ${idx + 1}. ${m.textoWhatsApp}\n`;
+            });
+        }
     } else {
         msg += `  No hay administración de medicamentos programada para este periodo.\n`;
     }

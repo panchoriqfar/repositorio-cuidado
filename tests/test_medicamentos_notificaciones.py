@@ -901,12 +901,12 @@ def test_medicamento_jueves_a_sabado_por_dia(db_session):
     fmt_dias = formatear_pauta_medicamentos_por_dia(tomas_omeprazol)
     txt_wa = fmt_dias["texto_whatsapp"]
 
-    assert "+Jueves+" in txt_wa
-    assert "+Viernes+" in txt_wa
-    assert "+Sábado+" in txt_wa
+    assert "*Jueves*" in txt_wa
+    assert "*Viernes*" in txt_wa
+    assert "*Sábado*" in txt_wa
     assert "*Omeprazol 20mg*: a las 07:00 hrs" in txt_wa
 
-    assert "+Lunes+" not in txt_wa
-    assert "+Martes+" not in txt_wa
-    assert "+Miércoles+" not in txt_wa
-    assert "+Domingo+" not in txt_wa
+    assert "*Lunes*" not in txt_wa
+    assert "*Martes*" not in txt_wa
+    assert "*Miércoles*" not in txt_wa
+    assert "*Domingo*" not in txt_wa

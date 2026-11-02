@@ -788,3 +788,58 @@ def test_pauta_semanal_completa_sin_recortar_dias_sin_turno(db_session):
     )
     assert "*Amlodipino*: de Lunes a Sábado a las 08:00 y 20:00 hrs" in msg_wa_sem
     assert "de Lunes a Miércoles y Sábado" not in msg_wa_sem
+
+
+def test_medicamento_lunes_a_viernes_no_se_arrastra_a_fin_de_semana(db_session):
+    """
+    Verifica que un medicamento programado de Lunes a Viernes:
+    1. Genere tomas exclusivamente de Lunes a Viernes.
+    2. NO genere tomas en Sábado ni Domingo por arrastre.
+    3. En el formateo de notificaciones aparezca 'de Lunes a Viernes' y NUNCA 'de Lunes a Domingo'.
+    """
+    lunes = date(2026, 10, 26)
+    domingo = date(2026, 11, 1)
+
+    trat = TratamientoMedicamento(
+        id=500,
+        personal_medico_id=1,
+        nombre_medicamento="Enalapril 10mg",
+        dia_inicial=lunes
+    )
+    db_session.add(trat)
+    db_session.flush()
+
+    # 5 días: Lunes a Viernes a las 08:00
+    for offset in range(5):
+        d = lunes + timedelta(days=offset)
+        h = MedicamentoHorario(medicamento_id=500, dia=d, hora=time(8, 0))
+        db_session.add(h)
+
+    db_session.commit()
+
+    # Consultar toda la semana (Lunes a Domingo)
+    tomas = obtener_medicamentos_programados(db_session, lunes, domingo)
+
+    dias_con_toma = {t.dia for t in tomas if t.tratamiento.id == 500}
+    sabado = lunes + timedelta(days=5)
+    domingo_dt = lunes + timedelta(days=6)
+
+    # Debe contener Lunes a Viernes
+    for offset in range(5):
+        assert (lunes + timedelta(days=offset)) in dias_con_toma
+
+    # NO debe contener Sábado ni Domingo
+    assert sabado not in dias_con_toma, "Error: Se generó toma para Sábado en un medicamento de Lunes a Viernes"
+    assert domingo_dt not in dias_con_toma, "Error: Se generó toma para Domingo en un medicamento de Lunes a Viernes"
+
+    from app.medicamentos_service import formatear_pauta_medicamentos
+    # Verificar texto generado
+    fmt = formatear_pauta_medicamentos([t for t in tomas if t.tratamiento.id == 500])
+    assert len(fmt) == 1
+    texto_pauta = fmt[0]["texto_plano"]
+    texto_wa = fmt[0]["texto_whatsapp"]
+
+    assert "de Lunes a Viernes a las 08:00 hrs" in texto_pauta
+    assert "de Lunes a Viernes a las 08:00 hrs" in texto_wa
+    assert "Domingo" not in texto_pauta
+    assert "Sábado" not in texto_pauta

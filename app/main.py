@@ -1063,6 +1063,11 @@ def consultar_pauta_medicamentos(
         for t in tratamientos:
             horarios_dia = [h for h in t.horarios if h.dia == fecha]
             if not horarios_dia and fecha >= t.dia_inicial:
+                dias_sem_t = {h.dia.weekday() for h in t.horarios if getattr(h, "dia", None)}
+                if {0, 1, 2, 3, 4}.issubset(dias_sem_t) and 5 not in dias_sem_t and 6 not in dias_sem_t and fecha.weekday() in [5, 6]:
+                    continue
+                if {0, 1, 2, 3, 4, 5}.issubset(dias_sem_t) and 6 not in dias_sem_t and fecha.weekday() == 6:
+                    continue
                 horas_base = [h.hora for h in t.horarios if h.dia == t.dia_inicial]
                 if not horas_base and t.horarios:
                     horas_base = sorted({h.hora for h in t.horarios})
@@ -1119,6 +1124,11 @@ def listar_todos_tratamientos(
         for t in tratamientos:
             horarios_dia = [h for h in t.horarios if h.dia == fecha]
             if not horarios_dia and fecha >= t.dia_inicial:
+                dias_sem_t = {h.dia.weekday() for h in t.horarios if getattr(h, "dia", None)}
+                if {0, 1, 2, 3, 4}.issubset(dias_sem_t) and 5 not in dias_sem_t and 6 not in dias_sem_t and fecha.weekday() in [5, 6]:
+                    continue
+                if {0, 1, 2, 3, 4, 5}.issubset(dias_sem_t) and 6 not in dias_sem_t and fecha.weekday() == 6:
+                    continue
                 horas_base = [h.hora for h in t.horarios if h.dia == t.dia_inicial]
                 if not horas_base and t.horarios:
                     horas_base = sorted({h.hora for h in t.horarios})

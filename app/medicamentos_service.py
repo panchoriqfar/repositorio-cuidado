@@ -178,6 +178,22 @@ def obtener_medicamentos_programados(
         dias_expl = list(explicit_por_fecha.keys())
         dia_origen = min([t_dia_inicial] + dias_expl) if dias_expl else t_dia_inicial
 
+        # Detección de patrones de días explícitamente configurados (ej: Lunes a Viernes, Lunes a Sábado)
+        dias_semana_expl = {d.weekday() for d in explicit_por_fecha.keys()}
+        es_lunes_a_viernes = (
+            {0, 1, 2, 3, 4}.issubset(dias_semana_expl)
+            and 5 not in dias_semana_expl
+            and 6 not in dias_semana_expl
+        )
+        es_lunes_a_sabado = (
+            {0, 1, 2, 3, 4, 5}.issubset(dias_semana_expl)
+            and 6 not in dias_semana_expl
+        )
+        es_solo_fin_de_semana = (
+            {5, 6}.issubset(dias_semana_expl)
+            and not any(w in dias_semana_expl for w in [0, 1, 2, 3, 4])
+        )
+
         # Simular cronológicamente día a día hasta f_fin para mantener el estado exacto de horas activas
         dias_a_recorrer = (f_fin - dia_origen).days + 1
         for i in range(dias_a_recorrer):
@@ -192,6 +208,14 @@ def obtener_medicamentos_programados(
             # Solo generar tomas si curr_date cae en el intervalo consultado [f_inicio, f_fin]
             # y es mayor o igual al día inicial del tratamiento
             if curr_date >= f_inicio and curr_date >= t_dia_inicial:
+                # Reglas estrictas de días: Si un medicamento es de lunes a viernes, nunca generar tomas en sábado (5) ni domingo (6)
+                if es_lunes_a_viernes and curr_date.weekday() in [5, 6]:
+                    continue
+                if es_lunes_a_sabado and curr_date.weekday() == 6:
+                    continue
+                if es_solo_fin_de_semana and curr_date.weekday() in [0, 1, 2, 3, 4]:
+                    continue
+
                 if curr_date in explicit_por_fecha:
                     for h in sorted(explicit_por_fecha[curr_date], key=lambda x: to_time_obj(x.hora) or time(0, 0)):
                         h_time = to_time_obj(h.hora)

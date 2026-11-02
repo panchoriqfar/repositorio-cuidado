@@ -1517,6 +1517,22 @@ function generarYEnviarWAIndividual() {
             if (explicit.length > 0) {
                 horasDelDia = explicit.map(h => (h.hora || "").slice(0, 5)).filter(Boolean);
             } else {
+                const diasSemanaTrat = new Set((trat.horarios || []).map(h => {
+                    const dt = new Date(h.dia + "T00:00:00");
+                    return dt.getDay(); // 0=Dom, 1=Lun, ..., 5=Vie, 6=Sab
+                }));
+                const esLunesAViernes = [1, 2, 3, 4, 5].every(dIdx => diasSemanaTrat.has(dIdx)) && !diasSemanaTrat.has(6) && !diasSemanaTrat.has(0);
+                const esLunesASabado = [1, 2, 3, 4, 5, 6].every(dIdx => diasSemanaTrat.has(dIdx)) && !diasSemanaTrat.has(0);
+                const fechaObjActual = new Date(d.fecha + "T00:00:00");
+                const dayOfWeek = fechaObjActual.getDay();
+
+                if (esLunesAViernes && (dayOfWeek === 0 || dayOfWeek === 6)) {
+                    return; // No arrastrar a sábado ni domingo para medicamentos de lunes a viernes
+                }
+                if (esLunesASabado && dayOfWeek === 0) {
+                    return; // No arrastrar a domingo para medicamentos de lunes a sábado
+                }
+
                 const previos = (trat.horarios || [])
                     .filter(h => h.dia <= d.fecha)
                     .sort((a, b) => b.dia.localeCompare(a.dia));
@@ -4007,12 +4023,28 @@ function obtenerTomasParaPeriodoJS(periodo, fechaDia) {
         (listaTratamientosCache || []).forEach(trat => {
             if (!trat.dia_inicial || d.fecha < trat.dia_inicial) return;
 
-            // Arrastre continuo
+            // Arrastre continuo respetando días de prescripción (ej: Lunes a Viernes)
             const explicit = (trat.horarios || []).filter(h => h.dia === d.fecha);
             let horas = [];
             if (explicit.length > 0) {
                 horas = explicit.map(h => (h.hora || "").slice(0, 5)).filter(Boolean);
             } else {
+                const diasSemanaTrat = new Set((trat.horarios || []).map(h => {
+                    const dt = new Date(h.dia + "T00:00:00");
+                    return dt.getDay(); // 0=Dom, 1=Lun, ..., 5=Vie, 6=Sab
+                }));
+                const esLunesAViernes = [1, 2, 3, 4, 5].every(dIdx => diasSemanaTrat.has(dIdx)) && !diasSemanaTrat.has(6) && !diasSemanaTrat.has(0);
+                const esLunesASabado = [1, 2, 3, 4, 5, 6].every(dIdx => diasSemanaTrat.has(dIdx)) && !diasSemanaTrat.has(0);
+                const fechaObjActual = new Date(d.fecha + "T00:00:00");
+                const dayOfWeek = fechaObjActual.getDay();
+
+                if (esLunesAViernes && (dayOfWeek === 0 || dayOfWeek === 6)) {
+                    return; // No arrastrar a sábado ni domingo para medicamentos de lunes a viernes
+                }
+                if (esLunesASabado && dayOfWeek === 0) {
+                    return; // No arrastrar a domingo para medicamentos de lunes a sábado
+                }
+
                 const previos = (trat.horarios || [])
                     .filter(h => h.dia <= d.fecha)
                     .sort((a, b) => b.dia.localeCompare(a.dia));
